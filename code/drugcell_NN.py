@@ -10,6 +10,7 @@ import torch.nn.functional as F
 import util
 from util import *
 
+LOG_NUM_HIDDENS = False
 
 class drugcell_nn(nn.Module):
 
