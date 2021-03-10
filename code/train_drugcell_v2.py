@@ -228,7 +228,7 @@ num_hiddens_features = opt.feature_hiddens
 
 CUDA_ID = opt.cuda
 
-# TODO: Check this.
+# TODO: Check this. Not sure what should gene_dim be. Need to figure out the correct value. 
 gene_dim = 6
 
 train_model(root, term_size_map, term_direct_gene_map, dG, train_data, num_genes, gene_dim, opt.modeldir, opt.epoch, opt.batchsize, opt.lr, num_hiddens_features, cell_features_1, cell_features_2)
