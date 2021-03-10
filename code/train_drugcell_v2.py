@@ -22,6 +22,9 @@ def create_term_mask(term_direct_gene_map, gene_dim):
 
 	for term, gene_set in term_direct_gene_map.items():
 
+		print("gene_dim type:", type(gene_dim))
+		print("gene_dim: ", gene_dim)
+
 		mask = torch.zeros(len(gene_set), gene_dim)
 
 		for i, gene_id in enumerate(gene_set):
@@ -33,8 +36,8 @@ def create_term_mask(term_direct_gene_map, gene_dim):
 
 	return term_mask_map
 
- 
-def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, nfeatures, gene_dim, model_save_folder, train_epochs, batch_size, learning_rate, num_hiddens_genotype, cell_features):
+# TODO: cell_features_1 and cell_features_2 are not used. Modity this function to use them.
+def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, nfeatures, gene_dim, model_save_folder, train_epochs, batch_size, learning_rate, num_hiddens_genotype, cell_features_1, cell_features_2):
 
 	epoch_start_time = time.time()
 	best_model = 0
@@ -78,6 +81,7 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, nfeat
             
 			# Convert torch tensor to Variable
             # features = [batch_size, 5000] feature tensor with cell/drug features
+			# TODO: Replace cell_features with cell_features_1 and cell_features_2
 			features = build_input_vector(inputdata, cell_features)
             
             # cuda_features 
@@ -224,4 +228,7 @@ num_hiddens_features = opt.feature_hiddens
 
 CUDA_ID = opt.cuda
 
-train_model(root, term_size_map, term_direct_gene_map, dG, train_data, num_genes, opt.modeldir, opt.epoch, opt.batchsize, opt.lr, num_hiddens_features, num_hiddens_genotype, num_hiddens_final)
+# TODO: Check this.
+gene_dim = 6
+
+train_model(root, term_size_map, term_direct_gene_map, dG, train_data, num_genes, gene_dim, opt.modeldir, opt.epoch, opt.batchsize, opt.lr, num_hiddens_features, cell_features_1, cell_features_2)

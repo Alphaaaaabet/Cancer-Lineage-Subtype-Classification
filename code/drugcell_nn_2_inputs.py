@@ -87,7 +87,7 @@ class drugcell_nn(nn.Module):
                 sys.exit(1)
                 
             for gene in gene_set:
-                self.add_module(term+gene+'_direct_feature_layer', nn.Linear(self.feat_dim, self.num_hiddens_feature))
+                self.add_module(term+str(gene)+'_direct_feature_layer', nn.Linear(self.feat_dim, self.num_hiddens_feature))
                 # produces array [1, n_hiddens] for each mutation/feature
 
     # build a layer for forwarding gene that are directly annotated with the term
@@ -103,10 +103,10 @@ class drugcell_nn(nn.Module):
             for gene in gene_set:
                 # if there are some genes directly annotated with the term
                 # add a layer taking in all genes and forwarding out only those genes 		
-                self.add_module(term+gene+'_direct_gene_layer', nn.Linear(self.num_hiddens_feature, self.num_hiddens_genotype))
-                self.add_module(term+gene+'_batchnorm_layer', nn.BatchNorm1d(self.num_hiddens_genotype))
-                self.add_module(term+gene+'_aux_linear_layer1', nn.Linear(self.num_hiddens_genotype,1))
-                self.add_module(term+gene+'_aux_linear_layer2', nn.Linear(1,1))
+                self.add_module(term+str(gene)+'_direct_gene_layer', nn.Linear(self.num_hiddens_feature, self.num_hiddens_genotype))
+                self.add_module(term+str(gene)+'_batchnorm_layer', nn.BatchNorm1d(self.num_hiddens_genotype))
+                self.add_module(term+str(gene)+'_aux_linear_layer1', nn.Linear(self.num_hiddens_genotype,1))
+                self.add_module(term+str(gene)+'_aux_linear_layer2', nn.Linear(1,1))
 
     # start from bottom (leaves), and start building a neural network using the given ontology
     # adding modules --- the modules are not connected yet
