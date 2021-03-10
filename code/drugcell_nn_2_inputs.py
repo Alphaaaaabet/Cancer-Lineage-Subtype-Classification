@@ -56,10 +56,6 @@ class drugcell_nn(nn.Module):
         self.add_module('final_linear_layer',
                         nn.Linear(final_input_size, num_cancer_types))
         self.add_module('final_softmax_layer', nn.Softmax(num_cancer_types))
-        # self.add_module('final_linear_layer', nn.Linear(final_input_size, num_hiddens_final))
-        # self.add_module('final_batchnorm_layer', nn.BatchNorm1d(num_hiddens_final))
-        # self.add_module('final_aux_linear_layer', nn.Linear(num_hiddens_final,1))
-        # self.add_module('final_linear_layer_output', nn.Linear(1, 1))
 
     # calculate the number of values in a state (term)
     # self.derm_dim_map = {GO_term: #_hidden_units}
@@ -74,15 +70,14 @@ class drugcell_nn(nn.Module):
 
             # log the number of hidden variables per each term
             num_output = int(num_output)
-            # print("term\t%s\tterm_size\t%d\tnum_hiddens\t%d" % (term, term_size, num_output))
             self.term_dim_map[term] = num_output
 
+
+    # TODO: Update dimensions to take feature inputs
     # Build a layer for forwarding muations that are directly annotated with a gene
     def construct_direct_biofeature_layer(self):
         """ Iterate through term_direct_gene_map.items() to get gene indices
             Add linear layer for each gene instance that takes in features
-            
-            TO DO: Update dimensions to take feature inputs
         """
 
         for term, gene_set in self.term_direct_gene_map.items():
@@ -193,9 +188,6 @@ class drugcell_nn(nn.Module):
 
         # gene_input = Tensor of gene mutations [batch_size, 3008] each row is cell line
         # drug_input = Tensor of drug represen. [batch_size, 2000] each row is cell line
-        # torch.narrow(dimension, start, stop) truncates x along columns (dim=1), from 0 to gene_dim
-        # gene_input = x.narrow(1, 0, self.gene_dim)
-        # drug_input = x.narrow(1, self.gene_dim, self.drug_dim)
 
         # define forward function for GENOTYPE dcell FEATURES-FEATURES-FEATURES-FEATURES-FEATURES-FEATURES-FEATURES-
 
