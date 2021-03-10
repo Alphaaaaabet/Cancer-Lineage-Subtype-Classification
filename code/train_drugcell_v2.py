@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import util
 from util import *
-from drugcell_NN import *
+from drugcell_nn_2_inputs import *
 import argparse
 import numpy as np
 import time
@@ -34,14 +34,14 @@ def create_term_mask(term_direct_gene_map, gene_dim):
 	return term_mask_map
 
  
-def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, gene_dim, drug_dim, model_save_folder, train_epochs, batch_size, learning_rate, num_hiddens_genotype, num_hiddens_drug, num_hiddens_final, cell_features, drug_features):
+def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, nfeatures, gene_dim, model_save_folder, train_epochs, batch_size, learning_rate, num_hiddens_genotype, cell_features):
 
 	epoch_start_time = time.time()
 	best_model = 0
-	max_corr = 0
+	#max_corr = 0
 
 	# dcell neural network
-	model = drugcell_nn(term_size_map, term_direct_gene_map, dG, gene_dim, drug_dim, root, num_hiddens_genotype, num_hiddens_drug, num_hiddens_final)
+	model = drugcell_nn2(term_size_map, term_direct_gene_map, dG, nfeatures, gene_dim, root, num_hiddens_features, num_hiddens_genotype, num_cancer_types)
     
 	train_feature, train_label, test_feature, test_label = train_data
 
@@ -71,12 +71,14 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, gene_
 		#Train
 		model.train()
 		train_predict = torch.zeros(0,0).cuda(CUDA_ID)
+		total_loss = 0
+		total_test_loss = 0
 
 		for i, (inputdata, labels) in enumerate(train_loader):
             
 			# Convert torch tensor to Variable
             # features = [batch_size, 5000] feature tensor with cell/drug features
-			features = build_input_vector(inputdata, cell_features, drug_features)
+			features = build_input_vector(inputdata, cell_features)
             
             # cuda_features 
 			cuda_features = torch.autograd.Variable(features.cuda(CUDA_ID))
@@ -93,15 +95,17 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, gene_
 			else:
 				train_predict = torch.cat([train_predict, aux_out_map['final'].data], dim=0)
 
-			total_loss = 0	
+			train_loss = 0
 			for name, output in aux_out_map.items():
-				loss = nn.MSELoss()
+				loss = nn.CrossEntropyLoss()
 				if name == 'final':
-					total_loss += loss(output, cuda_labels)
+					train_loss += loss(output, cuda_labels)
 				else: # change 0.2 to smaller one for big terms
-					total_loss += 0.2 * loss(output, cuda_labels)
+					train_loss += 0.2 * loss(output, cuda_labels)
 
-			total_loss.backward()
+			train_loss.backward()
+
+			total_loss += train_loss / len(train_loader)
 
 			for name, param in model.named_parameters():
 				if '_direct_gene_layer.weight' not in name:
@@ -112,10 +116,10 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, gene_
 
 			optimizer.step()
 
-		train_corr = pearson_corr(train_predict, train_label_gpu)
+		#train_corr = pearson_corr(train_predict, train_label_gpu)
 
-		#if epoch % 10 == 0:
-		torch.save(model, model_save_folder + '/model_' + str(epoch) + '.pt')
+		if epoch % 10 == 0:
+			torch.save(model, model_save_folder + '/model_' + str(epoch) + '.pt')
 
 		#Test: random variables in training mode become static
 		model.eval()
@@ -124,8 +128,9 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, gene_
 
 		for i, (inputdata, labels) in enumerate(test_loader):
 			# Convert torch tensor to Variable
-			features = build_input_vector(inputdata, cell_features, drug_features)
+			features = build_input_vector(inputdata, cell_features)
 			cuda_features = Variable(features.cuda(CUDA_ID))
+			cuda_labels = Variable(labels.cuda(CUDA_ID))
 
 			aux_out_map, _ = model(cuda_features)
 
@@ -134,14 +139,23 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, gene_
 			else:
 				test_predict = torch.cat([test_predict, aux_out_map['final'].data], dim=0)
 
-		test_corr = pearson_corr(test_predict, test_label_gpu)
+			test_loss = 0
+			for name, output in aux_out_map.items():
+				loss = nn.CrossEntropyLoss()
+				if name == 'final':
+					test_loss += loss(output, cuda_labels)
+				else:  # change 0.2 to smaller one for big terms
+					test_loss += 0.2 * loss(output, cuda_labels)
+
+			total_test_loss += test_loss / len(test_loader)
+
+		#test_corr = pearson_corr(test_predict, test_label_gpu)
 
 		epoch_end_time = time.time()
-		print("epoch\t%d\tcuda_id\t%d\ttrain_corr\t%.6f\tval_corr\t%.6f\ttotal_loss\t%.6f\telapsed_time\t%s" % (epoch, CUDA_ID, train_corr, test_corr, total_loss, epoch_end_time-epoch_start_time))
+		print("epoch\t%d\tcuda_id\t%d\ttotal_loss\t%.6f\ttest_loss\t%.6f\telapsed_time\t%s" % (epoch, CUDA_ID, total_loss, total_test_loss, epoch_end_time-epoch_start_time))
 		epoch_start_time = epoch_end_time
-	
-		if test_corr >= max_corr:
-			max_corr = test_corr
+
+		if total_loss >= total_test_loss:
 			best_model = epoch
 
 	torch.save(model, model_save_folder + '/model_final.pt')	
@@ -160,13 +174,15 @@ parser.add_argument('-batchsize', help='Batchsize', type=int, default=5000)
 parser.add_argument('-modeldir', help='Folder for trained models', type=str, default='MODEL/')
 parser.add_argument('-cuda', help='Specify GPU', type=int, default=0)
 parser.add_argument('-gene2id', help='Gene to ID mapping file', type=str)
-parser.add_argument('-drug2id', help='Drug to ID mapping file', type=str)
+#parser.add_argument('-drug2id', help='Drug to ID mapping file', type=str)
 parser.add_argument('-cell2id', help='Cell to ID mapping file', type=str)
 
 parser.add_argument('-feature_hiddens', help='Mapping for the number of neurons in each term in genotype feature inputs', type=int, default=6)
 parser.add_argument('-genotype_hiddens', help='Mapping for the number of neurons in each term in genotype parts', type=int, default=6)
-parser.add_argument('-drug_hiddens', help='Mapping for the number of neurons in each layer', type=str, default='100,50,6')
+#parser.add_argument('-drug_hiddens', help='Mapping for the number of neurons in each layer', type=str, default='100,50,6')
 parser.add_argument('-final_hiddens', help='The number of neurons in the top layer', type=int, default=6)
+parser.add_argument('-num_cancer_types', help='The number of cancer types', type=int, default=92)
+
 
 parser.add_argument('-genotype_1', help='Mutation information for cell lines', type=str)
 parser.add_argument('-genotype_2', help='Mutation information for cell lines', type=str)
@@ -177,7 +193,7 @@ opt = parser.parse_args()
 torch.set_printoptions(precision=5)
 
 # load input data
-train_data, cell2id_mapping, drug2id_mapping = prepare_train_data(opt.train, opt.test, opt.cell2id, opt.drug2id)
+train_data, cell2id_mapping, drug2id_mapping = prepare_train_data(opt.train, opt.test, opt.cell2id)
 gene2id_mapping = load_mapping(opt.gene2id)
 
 # load cell/drug features
@@ -185,20 +201,21 @@ gene2id_mapping = load_mapping(opt.gene2id)
 # drug features = [cell_line, drug] fingerprint array
 cell_features_1 = np.genfromtxt(opt.genotype_1, delimiter=',')
 cell_features_2 = np.genfromtxt(opt.genotype_2, delimiter=',')
-drug_features = np.genfromtxt(opt.fingerprint, delimiter=',')
+#drug_features = np.genfromtxt(opt.fingerprint, delimiter=',')
 
 num_cells = len(cell2id_mapping)
-num_drugs = len(drug2id_mapping)
+#num_drugs = len(drug2id_mapping)
 num_genes = len(gene2id_mapping)
-drug_dim = len(drug_features[0,:])
+#drug_dim = len(drug_features[0,:])
 
 # load ontology
 dG, root, term_size_map, term_direct_gene_map = load_ontology(opt.onto, gene2id_mapping)
 
 # load the number of hiddens #######
 num_hiddens_genotype = opt.genotype_hiddens
+num_cancer_types = opt.num_cancer_types
 
-num_hiddens_drug = list(map(int, opt.drug_hiddens.split(',')))
+#num_hiddens_drug = list(map(int, opt.drug_hiddens.split(',')))
 
 num_hiddens_final = opt.final_hiddens
 
@@ -207,4 +224,4 @@ num_hiddens_features = opt.feature_hiddens
 
 CUDA_ID = opt.cuda
 
-train_model(root, term_size_map, term_direct_gene_map, dG, train_data, num_genes, drug_dim, opt.modeldir, opt.epoch, opt.batchsize, opt.lr, num_hiddens_features, num_hiddens_genotype, num_hiddens_drug, num_hiddens_final, cell_features_1, cell_features_2, drug_features)
+train_model(root, term_size_map, term_direct_gene_map, dG, train_data, num_genes, opt.modeldir, opt.epoch, opt.batchsize, opt.lr, num_hiddens_features, num_hiddens_genotype, num_hiddens_final, cell_features_1, cell_features_2)
