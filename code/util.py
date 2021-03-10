@@ -138,7 +138,7 @@ def prepare_train_data(train_file, test_file, cell2id_mapping_file):
 	print('Total number of cell lines = %d' % len(cell2id_mapping))
 	#print('Total number of drugs = %d' % len(drug2id_mapping))
 
-	return (torch.Tensor(train_feature), torch.FloatTensor(train_label), torch.Tensor(test_feature), torch.FloatTensor(test_label)), cell2id_mapping, drug2id_mapping
+	return (torch.Tensor(train_feature), torch.FloatTensor(train_label), torch.Tensor(test_feature), torch.FloatTensor(test_label)), cell2id_mapping
 
 
 def build_input_vector(input_data, cell_features):

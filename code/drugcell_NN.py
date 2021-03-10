@@ -12,13 +12,13 @@ from util import *
 
 class drugcell_nn(nn.Module):
 
-	def __init__(self, term_size_map, term_direct_gene_map, dG, ngene, root, num_hiddens_genotype, num_hiddens_drug, num_cancer_types):
+	def __init__(self, term_size_map, term_direct_gene_map, dG, ngene, root, num_hiddens_genotype, num_cancer_types):
 	
 		super(drugcell_nn, self).__init__()
 
 		self.root = root
 		self.num_hiddens_genotype = num_hiddens_genotype
-		self.num_hiddens_drug = num_hiddens_drug
+		#self.num_hiddens_drug = num_hiddens_drug
 		
 		# dictionary from terms to genes directly annotated with the term
 		self.term_direct_gene_map = term_direct_gene_map   
@@ -28,25 +28,24 @@ class drugcell_nn(nn.Module):
 		
 		# ngenes, gene_dim are the number of all genes	
 		self.gene_dim = ngene			   
-		self.drug_dim = ndrug
+		#self.drug_dim = ndrug
 
 		# add modules for neural networks to process genotypes
 		self.contruct_direct_gene_layer()
 		self.construct_NN_graph(dG)
 
 		# add modules for neural networks to process drugs	
-		self.construct_NN_drug()
+		#self.construct_NN_drug()
 
 		# Modified the last layer to a softmax classification one
 		# add modules for final layer
-		final_input_size = num_hiddens_genotype + num_hiddens_drug[-1]
+		final_input_size = num_hiddens_genotype
 		self.add_module('final_linear_layer', nn.Linear(final_input_size, num_cancer_types))
 		self.add_module('final_softmax_layer', nn.Softmax(num_cancer_types))
 		#self.add_module('final_batchnorm_layer', nn.BatchNorm1d(num_hiddens_final))
 		#self.add_module('final_aux_linear_layer', nn.Linear(num_hiddens_final,1))
 		#self.add_module('final_linear_layer_output', nn.Linear(1, 1))
 
-	# calculate the number of values in a state (term)
 	# calculate the number of values in a state (term)
 	def cal_term_dim(self, term_size_map):
 
@@ -60,6 +59,7 @@ class drugcell_nn(nn.Module):
 			print("term\t%s\tterm_size\t%d\tnum_hiddens\t%d" % (term, term_size, num_output))
 			self.term_dim_map[term] = num_output
 
+
 	# build a layer for forwarding gene that are directly annotated with the term
 	def contruct_direct_gene_layer(self):
 		
@@ -71,7 +71,7 @@ class drugcell_nn(nn.Module):
 			# if there are some genes directly annotated with the term, add a layer taking in all genes and forwarding out only those genes 		
 			self.add_module(term+'_direct_gene_layer', nn.Linear(self.gene_dim, len(gene_set)))
 
-	# TODO: delete the drug network
+'''
 	# add modules for fully connected neural networks for drug processing
 	def construct_NN_drug(self):
 		input_size = self.drug_dim
@@ -83,7 +83,7 @@ class drugcell_nn(nn.Module):
 			self.add_module('drug_aux_linear_layer2_' + str(i+1), nn.Linear(1,1))
 
 			input_size = self.num_hiddens_drug[i]
-
+'''
 
 	# start from bottom (leaves), and start building a neural network using the given ontology
 	# adding modules --- the modules are not connected yet
@@ -133,7 +133,7 @@ class drugcell_nn(nn.Module):
 	# definition of forward function
 	def forward(self, x):
 		gene_input = x.narrow(1, 0, self.gene_dim)
-		drug_input = x.narrow(1, self.gene_dim, self.drug_dim)
+		#drug_input = x.narrow(1, self.gene_dim, self.drug_dim)
 
 		# define forward function for genotype dcell #############################################
 		term_gene_out_map = {}
