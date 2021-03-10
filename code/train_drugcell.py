@@ -41,7 +41,7 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, gene_
 	#max_corr = 0
 
 	# dcell neural network
-	model = drugcell_nn(term_size_map, term_direct_gene_map, dG, ngene, root, num_hiddens_genotype, num_cancer_types)
+	model = drugcell_nn(term_size_map, term_direct_gene_map, dG, gene_dim, root, num_hiddens_genotype, num_cancer_types)
 
 	train_feature, train_label, test_feature, test_label = train_data
 
@@ -116,7 +116,7 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, gene_
 		#train_corr = pearson_corr(train_predict, train_label_gpu)
 
 		if epoch % 10 == 0:
-		torch.save(model, model_save_folder + '/model_' + str(epoch) + '.pt')
+			torch.save(model, model_save_folder + '/model_' + str(epoch) + '.pt')
 
 		#Test: random variables in training mode become static
 		model.eval()
@@ -204,6 +204,7 @@ dG, root, term_size_map, term_direct_gene_map = load_ontology(opt.onto, gene2id_
 
 # load the number of hiddens #######
 num_hiddens_genotype = opt.genotype_hiddens
+num_cancer_types = opt.num_cancer_types
 
 #num_hiddens_drug = list(map(int, opt.drug_hiddens.split(',')))
 
