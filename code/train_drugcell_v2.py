@@ -41,7 +41,6 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, nfeat
 
 	epoch_start_time = time.time()
 	best_model = 0
-	#max_corr = 0
 
 	# dcell neural network
 	model = drugcell_nn(term_size_map, term_direct_gene_map, dG, nfeatures, gene_dim, root, num_hiddens_features, num_hiddens_genotype, num_cancer_types)
@@ -153,8 +152,6 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, nfeat
 
 			total_test_loss += test_loss / len(test_loader)
 
-		#test_corr = pearson_corr(test_predict, test_label_gpu)
-
 		epoch_end_time = time.time()
 		print("epoch\t%d\tcuda_id\t%d\ttotal_loss\t%.6f\ttest_loss\t%.6f\telapsed_time\t%s" % (epoch, CUDA_ID, total_loss, total_test_loss, epoch_end_time-epoch_start_time))
 		epoch_start_time = epoch_end_time
@@ -205,12 +202,9 @@ gene2id_mapping = load_mapping(opt.gene2id)
 # drug features = [cell_line, drug] fingerprint array
 cell_features_1 = np.genfromtxt(opt.genotype_1, delimiter=',')
 cell_features_2 = np.genfromtxt(opt.genotype_2, delimiter=',')
-#drug_features = np.genfromtxt(opt.fingerprint, delimiter=',')
 
 num_cells = len(cell2id_mapping)
-#num_drugs = len(drug2id_mapping)
 num_genes = len(gene2id_mapping)
-#drug_dim = len(drug_features[0,:])
 
 # load ontology
 dG, root, term_size_map, term_direct_gene_map = load_ontology(opt.onto, gene2id_mapping)
@@ -218,9 +212,6 @@ dG, root, term_size_map, term_direct_gene_map = load_ontology(opt.onto, gene2id_
 # load the number of hiddens #######
 num_hiddens_genotype = opt.genotype_hiddens
 num_cancer_types = opt.num_cancer_types
-
-#num_hiddens_drug = list(map(int, opt.drug_hiddens.split(',')))
-
 num_hiddens_final = opt.final_hiddens
 
 num_hiddens_features = opt.feature_hiddens
@@ -228,7 +219,7 @@ num_hiddens_features = opt.feature_hiddens
 
 CUDA_ID = opt.cuda
 
-# TODO: Check this. Not sure what should gene_dim be. Need to figure out the correct value. 
+# TODO: Check this. Not sure what should gene_dim be. Need to figure out the correct value.
 gene_dim = 6
 
 train_model(root, term_size_map, term_direct_gene_map, dG, train_data, num_genes, gene_dim, opt.modeldir, opt.epoch, opt.batchsize, opt.lr, num_hiddens_features, cell_features_1, cell_features_2)
