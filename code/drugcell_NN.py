@@ -71,19 +71,6 @@ class drugcell_nn(nn.Module):
 			# if there are some genes directly annotated with the term, add a layer taking in all genes and forwarding out only those genes 		
 			self.add_module(term+'_direct_gene_layer', nn.Linear(self.gene_dim, len(gene_set)))
 
-'''
-	# add modules for fully connected neural networks for drug processing
-	def construct_NN_drug(self):
-		input_size = self.drug_dim
-
-		for i in range(len(self.num_hiddens_drug)):
-			self.add_module('drug_linear_layer_' + str(i+1), nn.Linear(input_size, self.num_hiddens_drug[i]))
-			self.add_module('drug_batchnorm_layer_' + str(i+1), nn.BatchNorm1d(self.num_hiddens_drug[i]))
-			self.add_module('drug_aux_linear_layer1_' + str(i+1), nn.Linear(self.num_hiddens_drug[i],1))
-			self.add_module('drug_aux_linear_layer2_' + str(i+1), nn.Linear(1,1))
-
-			input_size = self.num_hiddens_drug[i]
-'''
 
 	# start from bottom (leaves), and start building a neural network using the given ontology
 	# adding modules --- the modules are not connected yet

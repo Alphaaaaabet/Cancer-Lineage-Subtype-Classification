@@ -41,7 +41,7 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, nfeat
 	#max_corr = 0
 
 	# dcell neural network
-	model = drugcell_nn2(term_size_map, term_direct_gene_map, dG, nfeatures, gene_dim, root, num_hiddens_features, num_hiddens_genotype, num_cancer_types)
+	model = drugcell_nn(term_size_map, term_direct_gene_map, dG, nfeatures, gene_dim, root, num_hiddens_features, num_hiddens_genotype, num_cancer_types)
     
 	train_feature, train_label, test_feature, test_label = train_data
 
@@ -87,7 +87,7 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, nfeat
 			# Forward + Backward + Optimize
 			optimizer.zero_grad()  # zero the gradient buffer
 
-			# Here term_NN_out_map is a dictionary 
+			# Here term_NN_out_map is a dictionary
 			aux_out_map, _ = model(cuda_features)
 
 			if train_predict.size()[0] == 0:
@@ -123,7 +123,7 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, nfeat
 
 		#Test: random variables in training mode become static
 		model.eval()
-		
+
 		test_predict = torch.zeros(0,0).cuda(CUDA_ID)
 
 		for i, (inputdata, labels) in enumerate(test_loader):
@@ -158,7 +158,7 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, nfeat
 		if total_loss >= total_test_loss:
 			best_model = epoch
 
-	torch.save(model, model_save_folder + '/model_final.pt')	
+	torch.save(model, model_save_folder + '/model_final.pt')
 
 	print("Best performed model (epoch)\t%d" % best_model)
 
@@ -174,12 +174,12 @@ parser.add_argument('-batchsize', help='Batchsize', type=int, default=5000)
 parser.add_argument('-modeldir', help='Folder for trained models', type=str, default='MODEL/')
 parser.add_argument('-cuda', help='Specify GPU', type=int, default=0)
 parser.add_argument('-gene2id', help='Gene to ID mapping file', type=str)
-#parser.add_argument('-drug2id', help='Drug to ID mapping file', type=str)
+parser.add_argument('-drug2id', help='Drug to ID mapping file', type=str)
 parser.add_argument('-cell2id', help='Cell to ID mapping file', type=str)
 
 parser.add_argument('-feature_hiddens', help='Mapping for the number of neurons in each term in genotype feature inputs', type=int, default=6)
 parser.add_argument('-genotype_hiddens', help='Mapping for the number of neurons in each term in genotype parts', type=int, default=6)
-#parser.add_argument('-drug_hiddens', help='Mapping for the number of neurons in each layer', type=str, default='100,50,6')
+parser.add_argument('-drug_hiddens', help='Mapping for the number of neurons in each layer', type=str, default='100,50,6')
 parser.add_argument('-final_hiddens', help='The number of neurons in the top layer', type=int, default=6)
 parser.add_argument('-num_cancer_types', help='The number of cancer types', type=int, default=92)
 
@@ -193,7 +193,7 @@ opt = parser.parse_args()
 torch.set_printoptions(precision=5)
 
 # load input data
-train_data, cell2id_mapping, drug2id_mapping = prepare_train_data(opt.train, opt.test, opt.cell2id)
+train_data, cell2id_mapping = prepare_train_data(opt.train, opt.test, opt.cell2id)
 gene2id_mapping = load_mapping(opt.gene2id)
 
 # load cell/drug features
@@ -224,4 +224,4 @@ num_hiddens_features = opt.feature_hiddens
 
 CUDA_ID = opt.cuda
 
-train_model(root, term_size_map, term_direct_gene_map, dG, train_data, num_genes, opt.modeldir, opt.epoch, opt.batchsize, opt.lr, num_hiddens_features, num_hiddens_genotype, num_hiddens_final, cell_features_1, cell_features_2)
+train_model(root, term_size_map, term_direct_gene_map, dG, train_data, num_genes, opt.modeldir, opt.epoch, opt.batchsize, opt.lr, num_hiddens_features, num_hiddens_genotype, num_hiddens_final)
