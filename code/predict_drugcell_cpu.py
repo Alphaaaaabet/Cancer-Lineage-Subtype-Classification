@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import util
 from util import *
-from drugcell_NN import *
+from drugcell_nn_2_inputs import *
 import argparse
 
 
