@@ -47,6 +47,7 @@ class drugcell_nn(nn.Module):
 		#self.add_module('final_linear_layer_output', nn.Linear(1, 1))
 
 	# calculate the number of values in a state (term)
+	# calculate the number of values in a state (term)
 	def cal_term_dim(self, term_size_map):
 
 		self.term_dim_map = {}
@@ -58,7 +59,6 @@ class drugcell_nn(nn.Module):
 			num_output = int(num_output)
 			print("term\t%s\tterm_size\t%d\tnum_hiddens\t%d" % (term, term_size, num_output))
 			self.term_dim_map[term] = num_output
-
 
 	# build a layer for forwarding gene that are directly annotated with the term
 	def contruct_direct_gene_layer(self):
