@@ -34,6 +34,7 @@ def load_ontology(file_name, gene2id_mapping):
 			if line[0] not in term_direct_gene_map:
 				term_direct_gene_map[ line[0] ] = set()
 
+			# Collect the "child" of genes at position 0
 			term_direct_gene_map[line[0]].add(gene2id_mapping[line[1]])
 
 			gene_set.add(line[1])
@@ -82,7 +83,7 @@ def load_ontology(file_name, gene2id_mapping):
 	return dG, leaves[0], term_size_map, term_direct_gene_map
 
 
-def load_train_data(file_name, cell2id, drug2id):
+def load_train_data(file_name, cell2id):
 	feature = []
 	label = []
 
@@ -90,24 +91,24 @@ def load_train_data(file_name, cell2id, drug2id):
 		for line in fi:
 			tokens = line.strip().split('\t')
 
-			feature.append([cell2id[tokens[0]], drug2id[tokens[1]]])
+			feature.append(cell2id[tokens[0]])
 			label.append([float(tokens[2])])
 
 	return feature, label
 
 
-def prepare_predict_data(test_file, cell2id_mapping_file, drug2id_mapping_file):
+def prepare_predict_data(test_file, cell2id_mapping_file):
 
 	# load mapping files
 	cell2id_mapping = load_mapping(cell2id_mapping_file)
-	drug2id_mapping = load_mapping(drug2id_mapping_file)
+	#drug2id_mapping = load_mapping(drug2id_mapping_file)
 
-	test_feature, test_label = load_train_data(test_file, cell2id_mapping, drug2id_mapping)
+	test_feature, test_label = load_train_data(test_file, cell2id_mapping)
 
 	print('Total number of cell lines = %d' % len(cell2id_mapping))
-	print('Total number of drugs = %d' % len(drug2id_mapping))
+	#print('Total number of drugs = %d' % len(drug2id_mapping))
 
-	return (torch.Tensor(test_feature), torch.Tensor(test_label)), cell2id_mapping, drug2id_mapping
+	return (torch.Tensor(test_feature), torch.Tensor(test_label)), cell2id_mapping
 
 
 def load_mapping(mapping_file):
@@ -125,29 +126,28 @@ def load_mapping(mapping_file):
 	return mapping
 
 
-def prepare_train_data(train_file, test_file, cell2id_mapping_file, drug2id_mapping_file):
+def prepare_train_data(train_file, test_file, cell2id_mapping_file):
 
 	# load mapping files
 	cell2id_mapping = load_mapping(cell2id_mapping_file)
-	drug2id_mapping = load_mapping(drug2id_mapping_file)
+	#drug2id_mapping = load_mapping(drug2id_mapping_file)
 
-	train_feature, train_label = load_train_data(train_file, cell2id_mapping, drug2id_mapping)
-	test_feature, test_label = load_train_data(test_file, cell2id_mapping, drug2id_mapping)
+	train_feature, train_label = load_train_data(train_file, cell2id_mapping)
+	test_feature, test_label = load_train_data(test_file, cell2id_mapping)
 
 	print('Total number of cell lines = %d' % len(cell2id_mapping))
-	print('Total number of drugs = %d' % len(drug2id_mapping))
+	#print('Total number of drugs = %d' % len(drug2id_mapping))
 
 	return (torch.Tensor(train_feature), torch.FloatTensor(train_label), torch.Tensor(test_feature), torch.FloatTensor(test_label)), cell2id_mapping, drug2id_mapping
 
 
-def build_input_vector(input_data, cell_features, drug_features):
+def build_input_vector(input_data, cell_features):
 	genedim = len(cell_features[0,:])
-	drugdim = len(drug_features[0,:])
-	feature = np.zeros((input_data.size()[0], (genedim+drugdim)))
+	#drugdim = len(drug_features[0,:])
+	feature = np.zeros((input_data.size()[0], genedim))
 
 	for i in range(input_data.size()[0]):
-		feature[i] = np.concatenate((cell_features[int(input_data[i,0])], drug_features[int(input_data[i,1])]), axis=None)
+		feature[i] = cell_features[int(input_data[i,0])]
 
 	feature = torch.from_numpy(feature).float()
 	return feature
-
