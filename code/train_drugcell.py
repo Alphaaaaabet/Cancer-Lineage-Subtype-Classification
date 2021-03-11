@@ -34,14 +34,14 @@ def create_term_mask(term_direct_gene_map, gene_dim):
 	return term_mask_map
 
  
-def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, gene_dim, drug_dim, model_save_folder, train_epochs, batch_size, learning_rate, num_hiddens_genotype, num_hiddens_drug, num_hiddens_final, cell_features, drug_features):
+def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, gene_dim,num_genes_feat, drug_dim, model_save_folder, train_epochs, batch_size, learning_rate, num_hiddens_genotype, num_hiddens_drug, num_hiddens_final, cell_features, drug_features):
 
 	epoch_start_time = time.time()
 	best_model = 0
 	max_corr = 0
 
 	# dcell neural network
-	model = drugcell_nn(term_size_map, term_direct_gene_map, dG, gene_dim, drug_dim, root, num_hiddens_genotype, num_hiddens_drug, num_hiddens_final)
+	model = drugcell_nn(term_size_map, term_direct_gene_map, dG, gene_dim,num_genes_feat, drug_dim, root, num_hiddens_genotype, num_hiddens_drug, num_hiddens_final)
 
 	train_feature, train_label, test_feature, test_label = train_data
 
@@ -51,7 +51,7 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data, gene_
 	model.cuda(CUDA_ID)
 
 	optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, betas=(0.9, 0.99), eps=1e-05)
-	term_mask_map = create_term_mask(model.term_direct_gene_map, gene_dim)
+	term_mask_map = create_term_mask(model.term_direct_gene_map, num_genes_feat)
 
 	optimizer.zero_grad()
 
@@ -164,7 +164,8 @@ parser.add_argument('-genotype_hiddens', help='Mapping for the number of neurons
 parser.add_argument('-drug_hiddens', help='Mapping for the number of neurons in each layer', type=str, default='100,50,6')
 parser.add_argument('-final_hiddens', help='The number of neurons in the top layer', type=int, default=6)
 
-parser.add_argument('-genotype', help='Mutation information for cell lines', type=str)
+parser.add_argument('-genotype_1', help='Mutation 1 information for cell lines', type=str)
+parser.add_argument('-genotype_2', help='Mutation 2 information for cell lines', type=str)
 parser.add_argument('-fingerprint', help='Morgan fingerprint representation for drugs', type=str)
 
 # call functions
@@ -176,13 +177,16 @@ train_data, cell2id_mapping, drug2id_mapping = prepare_train_data(opt.train, opt
 gene2id_mapping = load_mapping(opt.gene2id)
 
 # load cell/drug features
-cell_features = np.genfromtxt(opt.genotype, delimiter=',')
+cell_features_1 = np.genfromtxt(opt.genotype_1, delimiter=',')
+cell_features_2 = np.genfromtxt(opt.genotype_2, delimiter=',')
+cell_features = np.hstack((cell_features_1, cell_features_2))
 drug_features = np.genfromtxt(opt.fingerprint, delimiter=',')
 
 num_cells = len(cell2id_mapping)
 num_drugs = len(drug2id_mapping)
 num_genes = len(gene2id_mapping)
 drug_dim = len(drug_features[0,:])
+num_genes_feat = num_genes*2
 
 # load ontology
 dG, root, term_size_map, term_direct_gene_map = load_ontology(opt.onto, gene2id_mapping)
@@ -197,5 +201,5 @@ num_hiddens_final = opt.final_hiddens
 
 CUDA_ID = opt.cuda
 
-train_model(root, term_size_map, term_direct_gene_map, dG, train_data, num_genes, drug_dim, opt.modeldir, opt.epoch, opt.batchsize, opt.lr, num_hiddens_genotype, num_hiddens_drug, num_hiddens_final, cell_features, drug_features)
+train_model(root, term_size_map, term_direct_gene_map, dG, train_data, num_genes,num_genes_feat, drug_dim, opt.modeldir, opt.epoch, opt.batchsize, opt.lr, num_hiddens_genotype, num_hiddens_drug, num_hiddens_final, cell_features, drug_features)
 

@@ -14,7 +14,7 @@ LOG_NUM_HIDDENS = False
 
 class drugcell_nn(nn.Module):
 
-    def __init__(self, term_size_map, term_direct_gene_map, dG, ngene, ndrug, root, num_hiddens_genotype, num_hiddens_drug, num_hiddens_final):
+    def __init__(self, term_size_map, term_direct_gene_map, dG, ngene,num_genes_feat, ndrug, root, num_hiddens_genotype, num_hiddens_drug, num_hiddens_final):
     
         super(drugcell_nn, self).__init__()
 
@@ -29,7 +29,8 @@ class drugcell_nn(nn.Module):
         self.cal_term_dim(term_size_map)           
         
         # ngenes, gene_dim are the number of all genes    
-        self.gene_dim = ngene               
+        self.gene_dim = ngene
+        self.num_genes_feat = num_genes_feat               
         self.drug_dim = ndrug
 
         # add modules for neural networks to process genotypes
@@ -70,7 +71,7 @@ class drugcell_nn(nn.Module):
                 sys.exit(1)
     
             # if there are some genes directly annotated with the term, add a layer taking in all genes and forwarding out only those genes         
-            self.add_module(term+'_direct_gene_layer', nn.Linear(self.gene_dim, len(gene_set)))
+            self.add_module(term+'_direct_gene_layer', nn.Linear(self.num_genes_feat, len(gene_set)))
 
 
     # add modules for fully connected neural networks for drug processing
@@ -133,8 +134,8 @@ class drugcell_nn(nn.Module):
 
     # definition of forward function
     def forward(self, x):
-        gene_input = x.narrow(1, 0, self.gene_dim)
-        drug_input = x.narrow(1, self.gene_dim, self.drug_dim)
+        gene_input = x.narrow(1, 0, self.num_genes_feat)
+        drug_input = x.narrow(1, self.num_genes_feat, self.drug_dim)
 
         # define forward function for genotype dcell #############################################
         term_gene_out_map = {}

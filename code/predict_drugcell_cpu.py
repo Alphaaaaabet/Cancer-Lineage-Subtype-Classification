@@ -71,7 +71,8 @@ parser.add_argument('-cell2id', help='Cell to ID mapping file', type=str, defaul
 parser.add_argument('-load', help='Model file', type=str, default='MODEL/model_200')
 parser.add_argument('-hidden', help='Hidden output folder', type=str, default='Hidden/')
 parser.add_argument('-result', help='Result file name', type=str, default='Result/')
-parser.add_argument('-genotype', help='Mutation information for cell lines', type=str)
+parser.add_argument('-genotype_1', help='Mutation 1 information for cell lines', type=str)
+parser.add_argument('-genotype_2', help='Mutation 2 information for cell lines', type=str)
 parser.add_argument('-fingerprint', help='Morgan fingerprint representation for drugs', type=str)
 
 opt = parser.parse_args()
@@ -81,7 +82,9 @@ predict_data, cell2id_mapping, drug2id_mapping = prepare_predict_data(opt.predic
 gene2id_mapping = load_mapping(opt.gene2id)
 
 # load cell/drug features
-cell_features = np.genfromtxt(opt.genotype, delimiter=',')
+cell_features_1 = np.genfromtxt(opt.genotype_1, delimiter=',')
+cell_features_2 = np.genfromtxt(opt.genotype_2, delimiter=',')
+cell_features = np.hstack((cell_features_1, cell_features_2))
 drug_features = np.genfromtxt(opt.fingerprint, delimiter=',')
 
 print("printing drug features")
