@@ -145,11 +145,10 @@ class drugcell_nn(nn.Module):
             for term in leaves:
 
                 # input size will be #chilren + #genes directly annotated by the term
-                # 
                 input_size = 0
 
                 for child in self.term_neighbor_map[term]:
-                    input_size += self.term_dim_map[child]
+                    input_size += self.term_dim_map[child] * self.num_hiddens_genotype
 
                 # Multiply number_genes * hidden_dim for total feature length 
                 if term in self.term_direct_gene_map:
@@ -197,6 +196,9 @@ class drugcell_nn(nn.Module):
         term_gene_feature_out_map = {}
 
         for term, genes in self.term_direct_gene_map.items():
+            
+            term_gene_feature_out_map[term] = {}
+            
             for gene in genes:            
                 gene_input_1 = x[:, gene]
                 gene_input_2 = y[:, gene]
@@ -204,13 +206,11 @@ class drugcell_nn(nn.Module):
                 #print("gene_input_1:", gene_input_1.shape)
                 #print("gene_input_2:", gene_input_2.shape)
                 feat_input = torch.transpose(torch.stack([gene_input_1, gene_input_2]), 0, 1)
-
-                term_gene_feature_out_map[term] = {}
                 term_gene_feature_out_map[term][gene] = self._modules[term + str(gene) + '_direct_feature_layer'](feat_input)
-
+                  
         # define forward function for GENOTYPE dcell GENE-GENE-GENE-GENE-GENE-GENE-GENE-GENE-GENE-GENE-GENE-GENE-GENE-
 
-        # Dict stores {GO_term: [linear_result1, ...]} for each gene connected to GO_term
+        # Dict stores {GO_term: {gene_id: activation, ...}, ...} for each gene connected to GO_term
         term_gene_out_map = {}
         gene_aux_map = {}
 
@@ -218,18 +218,20 @@ class drugcell_nn(nn.Module):
         # [batch_size, gene_dim] x [gene_dim, num_connected_genes] --> [batch_size, num_connected_genes]
         # generates {GO_term: [linear output tensor]}
         for term, gene_dict in term_gene_feature_out_map.items():
-            term_gene_out_map[term] = []
+            
+            term_gene_out_map[term] = {}
             for gene, activation in gene_dict.items():
-                gene_layer_output = self._modules[
-                    term + str(gene) + '_direct_gene_layer'](activation)
+               
+                gene_layer_output = self._modules[term + str(gene) + '_direct_gene_layer'](activation)
+                
                 tanh_out = torch.tanh(gene_layer_output)
-                term_gene_out_map[term].append(self._modules[
-                    term + str(gene) + '_batchnorm_layer'](tanh_out))
-                aux_layer1_out = torch.tanh(
-                    self._modules[term + str(gene) + '_aux_linear_layer1'](
-                        term_gene_out_map[term][-1]))
-                gene_aux_map[term] = self._modules[
-                    term + str(gene) + '_aux_linear_layer2'](aux_layer1_out)
+                
+                term_gene_out_map[term][gene] = self._modules[term + str(gene) + '_batchnorm_layer'](tanh_out)
+                
+                aux_layer1_out = torch.tanh(self._modules[term + str(gene) + '_aux_linear_layer1']
+                                            (term_gene_out_map[term][gene])) # May need indexer to access value
+                
+                gene_aux_map[term] = self._modules[term + str(gene) + '_aux_linear_layer2'](aux_layer1_out)
 
         # define forward function for ONTOLOGY dcell ONTOLOGY-ONTOLOGY-ONTOLOGY-ONTOLOGY-ONTOLOGY-ONTOLOGY-ONTOLOGY-
 
@@ -246,10 +248,15 @@ class drugcell_nn(nn.Module):
                 print("Neighbors:", len(self.term_neighbor_map[term]))
                 for child in self.term_neighbor_map[term]:
                     child_input_list.append(term_NN_out_map[child])
+                
+                # If GO_term has direct gene neigbors
+                # Iterate through {GO_term: {gene_id: activation, ...}, ...} to get GO_term, gene_id, activation
+                # append all gene activations for that GO_term
+                if term in self.term_direct_gene_map:   
+                    for gene, activation in term_gene_out_map[term].items():
                     
-                if term in self.term_direct_gene_map:
-                    print("Direct Genes:", len(term_gene_out_map[term]))
-                    child_input_list += (term_gene_out_map[term])
+                        print("Direct Genes:", len(term_gene_out_map[term]))
+                        child_input_list.append(term_gene_out_map[term][gene])
 
                 print("child_input_list:", len(child_input_list))    
                 
@@ -259,13 +266,10 @@ class drugcell_nn(nn.Module):
                 term_NN_out = self._modules[term + '_linear_layer'](child_input)
 
                 Tanh_out = torch.tanh(term_NN_out)
-                term_NN_out_map[term] = self._modules[
-                    term + '_batchnorm_layer'](Tanh_out)
-                aux_layer1_out = torch.tanh(
-                    self._modules[term + '_aux_linear_layer1'](
-                        term_NN_out_map[term]))
-                aux_out_map[term] = self._modules[term + '_aux_linear_layer2'](
-                    aux_layer1_out)
+                term_NN_out_map[term] = self._modules[term + '_batchnorm_layer'](Tanh_out)
+                
+                aux_layer1_out = torch.tanh(self._modules[term + '_aux_linear_layer1'](term_NN_out_map[term]))
+                aux_out_map[term] = self._modules[term + '_aux_linear_layer2'](aux_layer1_out)
 
         # connect two neural networks at the top #################################################
         final_input = term_NN_out_map[self.root]
@@ -277,4 +281,4 @@ class drugcell_nn(nn.Module):
         # aux_layer_out = torch.tanh(self._modules['final_aux_linear_layer'](out))
         aux_out_map['final'] = out
 
-        return aux_out_map, term_NN_out_map
+
