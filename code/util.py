@@ -91,7 +91,7 @@ def load_train_data(file_name, cell2id):
 
     with open(file_name, 'r') as fi:
         for line in fi:
-            tokens = line.strip().split('\t')
+            tokens = line.strip().split(',')
 
             feature.append(cell2id[tokens[0]])
             label.append([float(tokens[2])])
@@ -141,12 +141,15 @@ def prepare_train_data(train_file, test_file, cell2id_mapping_file):
 
 
 def build_input_vector(input_data, cell_features):
-    genedim = len(cell_features[0, :])
+    
+    print("input_data:", input_data.size())
+    print("cell_features:", len(cell_features))
+    genedim = len(cell_features[0])
     # drugdim = len(drug_features[0,:])
     feature = np.zeros((input_data.size()[0], genedim))
 
     for i in range(input_data.size()[0]):
-        feature[i] = cell_features[int(input_data[i, 0])]
+        feature[i] = cell_features[int(input_data[i])]
 
     feature = torch.from_numpy(feature).float()
     return feature

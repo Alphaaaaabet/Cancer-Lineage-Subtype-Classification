@@ -153,8 +153,9 @@ class drugcell_nn(nn.Module):
 
                 # Multiply number_genes * hidden_dim for total feature length 
                 if term in self.term_direct_gene_map:
-                    input_size += len(self.term_direct_gene_map[
-                                          term]) * self.num_hiddens_genotype
+                    #print(len(self.term_direct_gene_map[term]))
+                    #print(self.num_hiddens_genotype)
+                    input_size += len(self.term_direct_gene_map[term]) * self.num_hiddens_genotype
 
                 # term_hidden is the number of the hidden variables in each state
                 term_hidden = self.term_dim_map[term]
@@ -195,15 +196,17 @@ class drugcell_nn(nn.Module):
         # term_gene_feature_out_map['GO_term'][gene_ind] accesses the stored activation array
         term_gene_feature_out_map = {}
 
-        for term, gene in self.term_direct_gene_map.items():
-            gene_input_1 = x[:, gene]
-            gene_input_2 = y[:, gene]
+        for term, genes in self.term_direct_gene_map.items():
+            for gene in genes:            
+                gene_input_1 = x[:, gene]
+                gene_input_2 = y[:, gene]
+    
+                #print("gene_input_1:", gene_input_1.shape)
+                #print("gene_input_2:", gene_input_2.shape)
+                feat_input = torch.transpose(torch.stack([gene_input_1, gene_input_2]), 0, 1)
 
-            feat_input = torch.cat([gene_input_1, gene_input_2], dim=1)
-
-            term_gene_feature_out_map[term] = {}
-            term_gene_feature_out_map[term][gene] = self._modules[
-                term + gene + '_direct_feature_layer'](feat_input)
+                term_gene_feature_out_map[term] = {}
+                term_gene_feature_out_map[term][gene] = self._modules[term + str(gene) + '_direct_feature_layer'](feat_input)
 
         # define forward function for GENOTYPE dcell GENE-GENE-GENE-GENE-GENE-GENE-GENE-GENE-GENE-GENE-GENE-GENE-GENE-
 
@@ -214,19 +217,19 @@ class drugcell_nn(nn.Module):
         #       Mutation Input   x          Layer dims
         # [batch_size, gene_dim] x [gene_dim, num_connected_genes] --> [batch_size, num_connected_genes]
         # generates {GO_term: [linear output tensor]}
-        for term, gene_dict in self.term_gene_feature_out_map.items():
-
+        for term, gene_dict in term_gene_feature_out_map.items():
+            term_gene_out_map[term] = []
             for gene, activation in gene_dict.items():
                 gene_layer_output = self._modules[
-                    term + gene + '_direct_gene_layer'](activation)
+                    term + str(gene) + '_direct_gene_layer'](activation)
                 tanh_out = torch.tanh(gene_layer_output)
-                term_gene_out_map[term] = self._modules[
-                    term + gene + '_batchnorm_layer'](tanh_out)
+                term_gene_out_map[term].append(self._modules[
+                    term + str(gene) + '_batchnorm_layer'](tanh_out))
                 aux_layer1_out = torch.tanh(
-                    self._modules[term + gene + '_aux_linear_layer1'](
-                        term_gene_out_map[term]))
+                    self._modules[term + str(gene) + '_aux_linear_layer1'](
+                        term_gene_out_map[term][-1]))
                 gene_aux_map[term] = self._modules[
-                    term + gene + '_aux_linear_layer2'](aux_layer1_out)
+                    term + str(gene) + '_aux_linear_layer2'](aux_layer1_out)
 
         # define forward function for ONTOLOGY dcell ONTOLOGY-ONTOLOGY-ONTOLOGY-ONTOLOGY-ONTOLOGY-ONTOLOGY-ONTOLOGY-
 
@@ -240,14 +243,18 @@ class drugcell_nn(nn.Module):
                 child_input_list = []
 
                 # Appends any existing direct child outputs from previous forward pass
+                print("Neighbors:", len(self.term_neighbor_map[term]))
                 for child in self.term_neighbor_map[term]:
                     child_input_list.append(term_NN_out_map[child])
-
+                    
                 if term in self.term_direct_gene_map:
-                    child_input_list.append(term_gene_out_map[term])
+                    print("Direct Genes:", len(term_gene_out_map[term]))
+                    child_input_list += (term_gene_out_map[term])
 
+                print("child_input_list:", len(child_input_list))    
+                
                 # Add layer before this for gene term
-                child_input = torch.cat(child_input_list, 1)
+                child_input = torch.cat(child_input_list, dim=1)
 
                 term_NN_out = self._modules[term + '_linear_layer'](child_input)
 

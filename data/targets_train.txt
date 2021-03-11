@@ -1,4 +1,3 @@
-CCLE_Name,lineage_subtype,id
 SW962_VULVA,skin,80
 8505C_THYROID,thyroid_carcinoma,21
 NKM1_HAEMATOPOIETIC_AND_LYMPHOID_TISSUE,AML,0

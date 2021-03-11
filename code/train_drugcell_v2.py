@@ -57,17 +57,19 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
                                  betas=(0.9, 0.99), eps=1e-05)
-    term_mask_map = create_term_mask(model.term_direct_gene_map, gene_dim)
+    #term_mask_map = create_term_mask(model.term_direct_gene_map, gene_dim)
 
     optimizer.zero_grad()
 
     for name, param in model.named_parameters():
-        term_name = name.split('_')[0]
+        # Removed masking as no longer needed, keeping weight reduction
+        #term_name = name.split('_')[0]
 
-        if '_direct_gene_layer.weight' in name:
-            param.data = torch.mul(param.data, term_mask_map[term_name]) * 0.1
-        else:
-            param.data = param.data * 0.1
+        #if '_direct_gene_layer.weight' in name:
+        #    param.data = torch.mul(param.data, term_mask_map[term_name]) * 0.1
+        #else:
+        #    param.data = param.data * 0.1
+        param.data = param.data * 0.1
 
     train_loader = du.DataLoader(du.TensorDataset(train_feature, train_label),
                                  batch_size=batch_size, shuffle=False)
@@ -86,18 +88,22 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
 
             # Convert torch tensor to Variable
             # features = [batch_size, 5000] feature tensor with cell/drug features
-            # TODO: Replace cell_features with cell_features_1 and cell_features_2
-            features = build_input_vector(inputdata, cell_features)
+            # Convert torch tensor to Variable
+            print("features_1:", len(cell_features_1))
+            features_1 = build_input_vector(inputdata, cell_features_1)
+            print("features_2:", len(cell_features_2))
+            features_2 = build_input_vector(inputdata, cell_features_2)
 
             # cuda_features 
-            cuda_features = torch.autograd.Variable(features.cuda(CUDA_ID))
+            cuda_features_1 = torch.autograd.Variable(features_1.cuda(CUDA_ID))
+            cuda_features_2 = torch.autograd.Variable(features_2.cuda(CUDA_ID))
             cuda_labels = torch.autograd.Variable(labels.cuda(CUDA_ID))
 
             # Forward + Backward + Optimize
             optimizer.zero_grad()  # zero the gradient buffer
 
             # Here term_NN_out_map is a dictionary
-            aux_out_map, _ = model(cuda_features)
+            aux_out_map, _ = model(cuda_features_1, cuda_features_2)
 
             if train_predict.size()[0] == 0:
                 train_predict = aux_out_map['final'].data
@@ -138,11 +144,15 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
 
         for i, (inputdata, labels) in enumerate(test_loader):
             # Convert torch tensor to Variable
-            features = build_input_vector(inputdata, cell_features)
-            cuda_features = Variable(features.cuda(CUDA_ID))
+            features_1 = build_input_vector(inputdata, cell_features_1)
+            features_2 = build_input_vector(inputdata, cell_features_2)
+
+            # cuda_features 
+            cuda_features_1 = torch.autograd.Variable(features_1.cuda(CUDA_ID))
+            cuda_features_2 = torch.autograd.Variable(features_2.cuda(CUDA_ID))
             cuda_labels = Variable(labels.cuda(CUDA_ID))
 
-            aux_out_map, _ = model(cuda_features)
+            aux_out_map, _ = model(cuda_features_1, cuda_features_2)
 
             if test_predict.size()[0] == 0:
                 test_predict = aux_out_map['final'].data
@@ -252,5 +262,5 @@ gene_dim = 6
 
 # TODO: Make sure the arguments are in correct order.
 train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
-            num_genes, gene_dim, opt.modeldir, opt.epoch, opt.batchsize, opt.lr,
+            2, num_genes, opt.modeldir, opt.epoch, opt.batchsize, opt.lr,
             num_hiddens_features, cell_features_1, cell_features_2)

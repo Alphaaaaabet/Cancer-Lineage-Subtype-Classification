@@ -199,6 +199,7 @@ class drugcell_nn(nn.Module):
         term_gene_feature_out_map = {}
 
         for term, gene in self.term_direct_gene_map.items():
+            print("Gene:", gene)
             gene_input_1 = x[:, gene]
             gene_input_2 = y[:, gene]
 
