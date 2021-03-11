@@ -39,7 +39,7 @@ def create_term_mask(term_direct_gene_map, gene_dim):
 def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
                 nfeatures, gene_dim, model_save_folder, train_epochs,
                 batch_size, learning_rate, num_hiddens_genotype,
-                cell_features_1, cell_features_2):
+                cell_features_1, cell_features_2, num_cancer_types):
     epoch_start_time = time.time()
     best_model = 0
 
@@ -80,7 +80,7 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
 
         # Train
         model.train()
-        train_predict = torch.zeros(0, 0).cuda(CUDA_ID)
+        train_predict = torch.zeros(0, 0).type(torch.FloatTensor).cuda(CUDA_ID)
         total_loss = 0
         total_test_loss = 0
 
@@ -89,11 +89,12 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
             # Convert torch tensor to Variable
             # features = [batch_size, 5000] feature tensor with cell/drug features
             # Convert torch tensor to Variable
-            print("features_1:", len(cell_features_1))
+            #print("features_1:", len(cell_features_1))
             features_1 = build_input_vector(inputdata, cell_features_1)
-            print("features_2:", len(cell_features_2))
+            #print("features_2:", len(cell_features_2))
             features_2 = build_input_vector(inputdata, cell_features_2)
-
+            labels = torch.flatten(labels).type(torch.LongTensor)
+            
             # cuda_features 
             cuda_features_1 = torch.autograd.Variable(features_1.cuda(CUDA_ID))
             cuda_features_2 = torch.autograd.Variable(features_2.cuda(CUDA_ID))
@@ -103,26 +104,28 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
             optimizer.zero_grad()  # zero the gradient buffer
 
             # Here term_NN_out_map is a dictionary
-            aux_out_map, _ = model(cuda_features_1, cuda_features_2)
+            aux_out_map, term_NN_out_map = model(cuda_features_1, cuda_features_2)
 
             if train_predict.size()[0] == 0:
-                train_predict = aux_out_map['final'].data
+                train_predict = term_NN_out_map['final'].data
             else:
                 train_predict = torch.cat(
-                    [train_predict, aux_out_map['final'].data], dim=0)
+                    [train_predict, term_NN_out_map['final'].data], dim=0)
 
             train_loss = 0
-            for name, output in aux_out_map.items():
+            for name, output in term_NN_out_map.items():
+                #print("Output:", output.shape)
                 loss = nn.CrossEntropyLoss()
                 if name == 'final':
                     train_loss += loss(output, cuda_labels)
-                else:  # change 0.2 to smaller one for big terms
-                    train_loss += 0.2 * loss(output, cuda_labels)
+                #else:  # change 0.2 to smaller one for big terms
+                    #train_loss += 0.2 * loss(output, cuda_labels)
 
             train_loss.backward()
 
             total_loss += train_loss / len(train_loader)
 
+            '''
             for name, param in model.named_parameters():
                 if '_direct_gene_layer.weight' not in name:
                     continue
@@ -130,7 +133,7 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
                 # print name, param.grad.data.size(), term_mask_map[term_name].size()
                 param.grad.data = torch.mul(param.grad.data,
                                             term_mask_map[term_name])
-
+            '''
             optimizer.step()
 
         if epoch % 10 == 0:
@@ -146,27 +149,28 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
             # Convert torch tensor to Variable
             features_1 = build_input_vector(inputdata, cell_features_1)
             features_2 = build_input_vector(inputdata, cell_features_2)
+            labels = torch.flatten(labels).type(torch.LongTensor)
 
             # cuda_features 
             cuda_features_1 = torch.autograd.Variable(features_1.cuda(CUDA_ID))
             cuda_features_2 = torch.autograd.Variable(features_2.cuda(CUDA_ID))
             cuda_labels = Variable(labels.cuda(CUDA_ID))
 
-            aux_out_map, _ = model(cuda_features_1, cuda_features_2)
+            aux_out_map, term_NN_out_map = model(cuda_features_1, cuda_features_2)
 
             if test_predict.size()[0] == 0:
-                test_predict = aux_out_map['final'].data
+                test_predict = term_NN_out_map['final'].data
             else:
                 test_predict = torch.cat(
-                    [test_predict, aux_out_map['final'].data], dim=0)
+                    [test_predict, term_NN_out_map['final'].data], dim=0)
 
             test_loss = 0
-            for name, output in aux_out_map.items():
+            for name, output in term_NN_out_map.items():
                 loss = nn.CrossEntropyLoss()
                 if name == 'final':
                     test_loss += loss(output, cuda_labels)
-                else:  # change 0.2 to smaller one for big terms
-                    test_loss += 0.2 * loss(output, cuda_labels)
+                #else:  # change 0.2 to smaller one for big terms
+                    #test_loss += 0.2 * loss(output, cuda_labels)
 
             total_test_loss += test_loss / len(test_loader)
 
@@ -263,4 +267,4 @@ gene_dim = 6
 # TODO: Make sure the arguments are in correct order.
 train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
             2, num_genes, opt.modeldir, opt.epoch, opt.batchsize, opt.lr,
-            num_hiddens_features, cell_features_1, cell_features_2)
+            num_hiddens_features, cell_features_1, cell_features_2, num_cancer_types)

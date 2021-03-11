@@ -55,7 +55,7 @@ class drugcell_nn(nn.Module):
         final_input_size = num_hiddens_genotype
         self.add_module('final_linear_layer',
                         nn.Linear(final_input_size, num_cancer_types))
-        self.add_module('final_softmax_layer', nn.Softmax(num_cancer_types))
+        self.add_module('final_softmax_layer', nn.Softmax(dim=-1))
 
     # calculate the number of values in a state (term)
     # self.derm_dim_map = {GO_term: #_hidden_units}
@@ -148,7 +148,7 @@ class drugcell_nn(nn.Module):
                 input_size = 0
 
                 for child in self.term_neighbor_map[term]:
-                    input_size += self.term_dim_map[child] * self.num_hiddens_genotype
+                    input_size += self.term_dim_map[child]
 
                 # Multiply number_genes * hidden_dim for total feature length 
                 if term in self.term_direct_gene_map:
@@ -245,7 +245,7 @@ class drugcell_nn(nn.Module):
                 child_input_list = []
 
                 # Appends any existing direct child outputs from previous forward pass
-                print("Neighbors:", len(self.term_neighbor_map[term]))
+                #print("Neighbors:", len(self.term_neighbor_map[term]))
                 for child in self.term_neighbor_map[term]:
                     child_input_list.append(term_NN_out_map[child])
                 
@@ -255,10 +255,10 @@ class drugcell_nn(nn.Module):
                 if term in self.term_direct_gene_map:   
                     for gene, activation in term_gene_out_map[term].items():
                     
-                        print("Direct Genes:", len(term_gene_out_map[term]))
+                        #print("Direct Genes:", len(term_gene_out_map[term]))
                         child_input_list.append(term_gene_out_map[term][gene])
 
-                print("child_input_list:", len(child_input_list))    
+                #print("child_input_list:", len(child_input_list))    
                 
                 # Add layer before this for gene term
                 child_input = torch.cat(child_input_list, dim=1)
@@ -274,11 +274,11 @@ class drugcell_nn(nn.Module):
         # connect two neural networks at the top #################################################
         final_input = term_NN_out_map[self.root]
 
-        out = self._modules['final_softmax_layer'](
-            self._modules['final_linear_layer'](final_input))
+        #out = self._modules['final_softmax_layer'](self._modules['final_linear_layer'](final_input))
+        out = self._modules['final_linear_layer'](final_input)
         term_NN_out_map['final'] = out
 
         # aux_layer_out = torch.tanh(self._modules['final_aux_linear_layer'](out))
         aux_out_map['final'] = out
-
-
+        
+        return aux_out_map, term_NN_out_map
