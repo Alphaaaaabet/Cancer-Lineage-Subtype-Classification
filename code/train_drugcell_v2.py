@@ -39,7 +39,7 @@ def create_term_mask(term_direct_gene_map, gene_dim):
 def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
                 nfeatures, gene_dim, model_save_folder, train_epochs,
                 batch_size, learning_rate, num_hiddens_genotype,
-                cell_features_1, cell_features_2):
+                cell_features_1, cell_features_2, num_cancer_types):
     epoch_start_time = time.time()
     best_model = 0
 
@@ -75,12 +75,18 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
                                  batch_size=batch_size, shuffle=False)
     test_loader = du.DataLoader(du.TensorDataset(test_feature, test_label),
                                 batch_size=batch_size, shuffle=False)
-
+    
+    train_loss_list_for_graphing = []
+    test_loss_list_for_graphing = []
+    
+    train_acc_list_for_graphing = []
+    test_acc_list_for_graphing = []
+    
     for epoch in range(train_epochs):
 
         # Train
         model.train()
-        train_predict = torch.zeros(0, 0).cuda(CUDA_ID)
+        train_predict = torch.zeros(0, 0).type(torch.FloatTensor).cuda(CUDA_ID)
         total_loss = 0
         total_test_loss = 0
 
@@ -89,11 +95,12 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
             # Convert torch tensor to Variable
             # features = [batch_size, 5000] feature tensor with cell/drug features
             # Convert torch tensor to Variable
-            print("features_1:", len(cell_features_1))
+            #print("features_1:", len(cell_features_1))
             features_1 = build_input_vector(inputdata, cell_features_1)
-            print("features_2:", len(cell_features_2))
+            #print("features_2:", len(cell_features_2))
             features_2 = build_input_vector(inputdata, cell_features_2)
-
+            labels = torch.flatten(labels).type(torch.LongTensor)
+            
             # cuda_features 
             cuda_features_1 = torch.autograd.Variable(features_1.cuda(CUDA_ID))
             cuda_features_2 = torch.autograd.Variable(features_2.cuda(CUDA_ID))
@@ -103,26 +110,33 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
             optimizer.zero_grad()  # zero the gradient buffer
 
             # Here term_NN_out_map is a dictionary
-            aux_out_map, _ = model(cuda_features_1, cuda_features_2)
+            aux_out_map, term_NN_out_map = model(cuda_features_1, cuda_features_2)
 
             if train_predict.size()[0] == 0:
-                train_predict = aux_out_map['final'].data
+                train_predict = term_NN_out_map['final'].data
             else:
                 train_predict = torch.cat(
-                    [train_predict, aux_out_map['final'].data], dim=0)
+                    [train_predict, term_NN_out_map['final'].data], dim=0)
 
             train_loss = 0
-            for name, output in aux_out_map.items():
+            for name, output in term_NN_out_map.items():
+                #print("Output:", output.shape)
                 loss = nn.CrossEntropyLoss()
                 if name == 'final':
                     train_loss += loss(output, cuda_labels)
-                else:  # change 0.2 to smaller one for big terms
-                    train_loss += 0.2 * loss(output, cuda_labels)
+                #else:  # change 0.2 to smaller one for big terms
+                    #train_loss += 0.2 * loss(output, cuda_labels)
 
             train_loss.backward()
 
             total_loss += train_loss / len(train_loader)
+    
+            acc = accuracy(output, cuda_labels)
+            
+            train_loss_list_for_graphing.append(train_loss)
+            train_acc_list_for_graphing.append(acc)
 
+            '''
             for name, param in model.named_parameters():
                 if '_direct_gene_layer.weight' not in name:
                     continue
@@ -130,7 +144,7 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
                 # print name, param.grad.data.size(), term_mask_map[term_name].size()
                 param.grad.data = torch.mul(param.grad.data,
                                             term_mask_map[term_name])
-
+            '''
             optimizer.step()
 
         if epoch % 10 == 0:
@@ -146,43 +160,55 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
             # Convert torch tensor to Variable
             features_1 = build_input_vector(inputdata, cell_features_1)
             features_2 = build_input_vector(inputdata, cell_features_2)
+            labels = torch.flatten(labels).type(torch.LongTensor)
 
             # cuda_features 
             cuda_features_1 = torch.autograd.Variable(features_1.cuda(CUDA_ID))
             cuda_features_2 = torch.autograd.Variable(features_2.cuda(CUDA_ID))
             cuda_labels = Variable(labels.cuda(CUDA_ID))
 
-            aux_out_map, _ = model(cuda_features_1, cuda_features_2)
+            aux_out_map, term_NN_out_map = model(cuda_features_1, cuda_features_2)
 
             if test_predict.size()[0] == 0:
-                test_predict = aux_out_map['final'].data
+                test_predict = term_NN_out_map['final'].data
             else:
                 test_predict = torch.cat(
-                    [test_predict, aux_out_map['final'].data], dim=0)
+                    [test_predict, term_NN_out_map['final'].data], dim=0)
 
             test_loss = 0
-            for name, output in aux_out_map.items():
+            for name, output in term_NN_out_map.items():
                 loss = nn.CrossEntropyLoss()
                 if name == 'final':
                     test_loss += loss(output, cuda_labels)
-                else:  # change 0.2 to smaller one for big terms
-                    test_loss += 0.2 * loss(output, cuda_labels)
+                #else:  # change 0.2 to smaller one for big terms
+                    #test_loss += 0.2 * loss(output, cuda_labels)
 
             total_test_loss += test_loss / len(test_loader)
-
+            
+            acc = accuracy(output, cuda_labels)
+            
+            test_loss_list_for_graphing.append(test_loss)
+            test_acc_list_for_graphing.append(acc)
+            
         epoch_end_time = time.time()
         print(
             "epoch\t%d\tcuda_id\t%d\ttotal_loss\t%.6f\ttest_loss\t%.6f\telapsed_time\t%s" % (
             epoch, CUDA_ID, total_loss, total_test_loss,
             epoch_end_time - epoch_start_time))
         epoch_start_time = epoch_end_time
+        
+        best_loss = 100
+        if best_loss > total_test_loss:
+            best_model_idx = epoch
+            best_model = model
+            best_loss = total_test_loss
 
-        if total_loss >= total_test_loss:
-            best_model = epoch
-
-    torch.save(model, model_save_folder + '/model_final.pt')
+    torch.save(best_model, model_save_folder + '/model_final.pt')
 
     print("Best performed model (epoch)\t%d" % best_model)
+    print(f'best model test accuracy: {test_acc_list_for_graphing[best_model_idx]}')
+
+    return train_loss_list_for_graphing, train_acc_list_for_graphing, test_loss_list_for_graphing, test_acc_list_for_graphing
 
 
 parser = argparse.ArgumentParser(description='Train dcell')
@@ -261,6 +287,28 @@ CUDA_ID = opt.cuda
 gene_dim = 6
 
 # TODO: Make sure the arguments are in correct order.
-train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
-            2, num_genes, opt.modeldir, opt.epoch, opt.batchsize, opt.lr,
-            num_hiddens_features, cell_features_1, cell_features_2)
+train_loss, train_acc, test_loss, test_acc = train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
+                                                         2, num_genes, opt.modeldir, opt.epoch, opt.batchsize, opt.lr,
+                                                         num_hiddens_features, cell_features_1, cell_features_2,
+                                                         num_cancer_types)
+
+
+plt.figure(figsize=(7,5), dpi=250)
+plt.plot(range(len(train_loss)), train_loss, c='b', label='Train Loss')
+plt.plot(range(len(train_loss)), test_loss, c='orange', label='Val. Loss')
+plt.title('Train vs. Val. Loss', fontsize=16)
+plt.xlabel('Epoch', fontsize=16)
+plt.ylabel('Average Loss', fontsize=16)
+plt.ylim(0, max(val_loss) + .25)
+plt.legend()
+plt.savefig(model_save_folder+'train_val_loss', dpi=1200)
+
+plt.figure(figsize=(7,5), dpi=250)
+plt.plot(range(len(train_loss)), train_acc, c='b', label='Train Loss')
+plt.plot(range(len(train_loss)), test_acc, c='orange', label='Val. Loss')
+plt.title('Train vs. Val. Accuracy', fontsize=16)
+plt.xlabel('Epoch', fontsize=16)
+plt.ylabel('Accuracy', fontsize=16)
+plt.ylim(0, max(val_loss) + .25)
+plt.legend()
+plt.savefig(model_save_folder+'train_val_acc', dpi=1200)
