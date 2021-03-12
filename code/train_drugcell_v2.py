@@ -11,6 +11,7 @@ from drugcell_nn_2_inputs import *
 import argparse
 import numpy as np
 import time
+import gc
 
 
 # build mask: matrix (nrows = number of relevant gene set, ncols = number all genes)
@@ -49,9 +50,10 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
                         num_hiddens_genotype, num_cancer_types)
 
     train_feature, train_label, test_feature, test_label = train_data
-
-    train_label_gpu = torch.autograd.Variable(train_label.cuda(CUDA_ID))
-    test_label_gpu = torch.autograd.Variable(test_label.cuda(CUDA_ID))
+    
+    # These arent being used elsewhere
+    #train_label_gpu = torch.autograd.Variable(train_label.cuda(CUDA_ID))
+    #test_label_gpu = torch.autograd.Variable(test_label.cuda(CUDA_ID))
 
     model.cuda(CUDA_ID)
 
@@ -135,6 +137,8 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
             
             train_loss_list_for_graphing.append(train_loss)
             train_acc_list_for_graphing.append(acc)
+            
+
 
             '''
             for name, param in model.named_parameters():
@@ -146,6 +150,15 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
                                             term_mask_map[term_name])
             '''
             optimizer.step()
+            
+            #Memory cleanup
+            del features_1
+            del features_2
+            del cuda_features_1
+            del cuda_features_2
+            del cuda_labels
+            gc.collect()
+            torch.cuda.empty_cache()
 
         if epoch % 10 == 0:
             torch.save(model,
@@ -189,6 +202,15 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
             
             test_loss_list_for_graphing.append(test_loss)
             test_acc_list_for_graphing.append(acc)
+            
+            #Memory cleanup
+            del features_1
+            del features_2
+            del cuda_features_1
+            del cuda_features_2
+            del cuda_labels
+            gc.collect()
+            torch.cuda.empty_cache()
             
         epoch_end_time = time.time()
         print(
