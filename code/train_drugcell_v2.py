@@ -34,6 +34,11 @@ def create_term_mask(term_direct_gene_map, gene_dim):
 
     return term_mask_map
 
+def accuracy(output, label):
+    total = output.shape[0]
+    preds = torch.argmax(output, dim=1).T
+    acc = torch.eq(preds, label).sum().item()/total
+    return acc
 
 # TODO: cell_features_1 and cell_features_2 are not used. Modity this function to use them.
 def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
@@ -41,12 +46,14 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
                 batch_size, learning_rate, num_hiddens_genotype,
                 cell_features_1, cell_features_2, num_cancer_types):
     epoch_start_time = time.time()
-    best_model = 0
+    best_model_idx = 0
 
     # dcell neural network
     model = drugcell_nn(term_size_map, term_direct_gene_map, dG, nfeatures,
                         gene_dim, root, num_hiddens_features,
                         num_hiddens_genotype, num_cancer_types)
+    
+    best_model = model
 
     train_feature, train_label, test_feature, test_label = train_data
 
@@ -76,6 +83,9 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
     test_loader = du.DataLoader(du.TensorDataset(test_feature, test_label),
                                 batch_size=batch_size, shuffle=False)
 
+    best_loss = 10.0
+    loss = nn.CrossEntropyLoss()
+    
     for epoch in range(train_epochs):
 
         # Train
@@ -114,37 +124,26 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
 
             train_loss = 0
             for name, output in term_NN_out_map.items():
-                #print("Output:", output.shape)
-                loss = nn.CrossEntropyLoss()
                 if name == 'final':
                     train_loss += loss(output, cuda_labels)
-                #else:  # change 0.2 to smaller one for big terms
-                    #train_loss += 0.2 * loss(output, cuda_labels)
 
             train_loss.backward()
 
             total_loss += train_loss / len(train_loader)
 
-            '''
-            for name, param in model.named_parameters():
-                if '_direct_gene_layer.weight' not in name:
-                    continue
-                term_name = name.split('_')[0]
-                # print name, param.grad.data.size(), term_mask_map[term_name].size()
-                param.grad.data = torch.mul(param.grad.data,
-                                            term_mask_map[term_name])
-            '''
             optimizer.step()
 
-        if epoch % 10 == 0:
+        if (epoch+1) % 10 == 0:
             torch.save(model,
-                       model_save_folder + '/model_' + str(epoch) + '.pt')
+                       model_save_folder + '/model_' + str(epoch+1) + '.pt')
 
         # Test: random variables in training mode become static
         model.eval()
 
         test_predict = torch.zeros(0, 0).cuda(CUDA_ID)
 
+        acc = 0.0
+        denom = 0
         for i, (inputdata, labels) in enumerate(test_loader):
             # Convert torch tensor to Variable
             features_1 = build_input_vector(inputdata, cell_features_1)
@@ -166,27 +165,29 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
 
             test_loss = 0
             for name, output in term_NN_out_map.items():
-                loss = nn.CrossEntropyLoss()
                 if name == 'final':
                     test_loss += loss(output, cuda_labels)
-                #else:  # change 0.2 to smaller one for big terms
-                    #test_loss += 0.2 * loss(output, cuda_labels)
+                    acc += accuracy(output, cuda_labels)
+                    denom += 1
 
+            acc = acc / denom
             total_test_loss += test_loss / len(test_loader)
 
         epoch_end_time = time.time()
         print(
-            "epoch\t%d\tcuda_id\t%d\ttotal_loss\t%.6f\ttest_loss\t%.6f\telapsed_time\t%s" % (
-            epoch, CUDA_ID, total_loss, total_test_loss,
+            "epoch\t%d\tcuda_id\t%d\ttotal_loss\t%.6f\ttest_loss\t%.6f\taccuracy\t%.6f\telapsed_time\t%s" % (
+            epoch, CUDA_ID, total_loss, total_test_loss, acc, 
             epoch_end_time - epoch_start_time))
         epoch_start_time = epoch_end_time
 
-        if total_loss >= total_test_loss:
-            best_model = epoch
+        if best_loss > total_test_loss:
+            best_model_idx = epoch
+            best_model = model
+            best_loss = total_test_loss
 
-    torch.save(model, model_save_folder + '/model_final.pt')
+    torch.save(best_model, model_save_folder + '/model_final.pt')
 
-    print("Best performed model (epoch)\t%d" % best_model)
+    print("Best performed model (epoch)\t%d" % best_model_idx)
 
 
 parser = argparse.ArgumentParser(description='Train dcell')
