@@ -13,7 +13,7 @@ drugfile=$inputdir"drug2fingerprint.txt"
 
 cudaid=0
 
-modeldir=Model_sample
+modeldir=model_sample
 rm -rf $modeldir
 mkdir $modeldir #PW CHANGE commented out
 

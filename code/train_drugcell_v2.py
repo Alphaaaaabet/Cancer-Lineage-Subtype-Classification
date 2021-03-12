@@ -46,7 +46,12 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
                 batch_size, learning_rate, num_hiddens_genotype,
                 cell_features_1, cell_features_2, num_cancer_types):
     epoch_start_time = time.time()
+    
     best_model_idx = 0
+    
+    train_loss_list_for_graphing = [] 
+    test_loss_list_for_graphing = [] 
+    test_acc_list_for_graphing = []
 
     # dcell neural network
     model = drugcell_nn(term_size_map, term_direct_gene_map, dG, nfeatures,
@@ -56,9 +61,6 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
     best_model = model
 
     train_feature, train_label, test_feature, test_label = train_data
-
-    train_label_gpu = torch.autograd.Variable(train_label.cuda(CUDA_ID))
-    test_label_gpu = torch.autograd.Variable(test_label.cuda(CUDA_ID))
 
     model.cuda(CUDA_ID)
 
@@ -143,7 +145,6 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
         test_predict = torch.zeros(0, 0).cuda(CUDA_ID)
 
         acc = 0.0
-        denom = 0
         for i, (inputdata, labels) in enumerate(test_loader):
             # Convert torch tensor to Variable
             features_1 = build_input_vector(inputdata, cell_features_1)
@@ -164,13 +165,13 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
                     [test_predict, term_NN_out_map['final'].data], dim=0)
 
             test_loss = 0
+            a = 0.0
             for name, output in term_NN_out_map.items():
                 if name == 'final':
                     test_loss += loss(output, cuda_labels)
-                    acc += accuracy(output, cuda_labels)
-                    denom += 1
+                    a += accuracy(output, cuda_labels)
 
-            acc = acc / denom
+            acc += a / len(test_loader)
             total_test_loss += test_loss / len(test_loader)
 
         epoch_end_time = time.time()
@@ -178,6 +179,11 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
             "epoch\t%d\tcuda_id\t%d\ttotal_loss\t%.6f\ttest_loss\t%.6f\taccuracy\t%.6f\telapsed_time\t%s" % (
             epoch, CUDA_ID, total_loss, total_test_loss, acc, 
             epoch_end_time - epoch_start_time))
+        
+        train_loss_list_for_graphing.append(total_loss) 
+        test_loss_list_for_graphing.append(total_test_loss)
+        test_acc_list_for_graphing.append(acc)
+    
         epoch_start_time = epoch_end_time
 
         if best_loss > total_test_loss:
@@ -188,6 +194,7 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
     torch.save(best_model, model_save_folder + '/model_final.pt')
 
     print("Best performed model (epoch)\t%d" % best_model_idx)
+    return train_loss_list_for_graphing, test_loss_list_for_graphing, test_acc_list_for_graphing
 
 
 parser = argparse.ArgumentParser(description='Train dcell')
@@ -198,7 +205,7 @@ parser.add_argument('-train', help='Training dataset', type=str)
 parser.add_argument('-test', help='Validation dataset', type=str)
 parser.add_argument('-epoch', help='Training epochs for training', type=int,
                     default=300)
-parser.add_argument('-lr', help='Learning rate', type=float, default=0.001)
+parser.add_argument('-lr', help='Learning rate', type=float, default=0.01)
 parser.add_argument('-batchsize', help='Batchsize', type=int, default=5000)
 parser.add_argument('-modeldir', help='Folder for trained models', type=str,
                     default='MODEL/')
@@ -266,6 +273,24 @@ CUDA_ID = opt.cuda
 gene_dim = 6
 
 # TODO: Make sure the arguments are in correct order.
-train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
+train_loss, test_loss, acc = train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
             2, num_genes, opt.modeldir, opt.epoch, opt.batchsize, opt.lr,
             num_hiddens_features, cell_features_1, cell_features_2, num_cancer_types)
+
+plt.figure(figsize=(7,5), dpi=250)
+plt.plot(range(len(train_loss)), train_loss, c='b', label='Train Loss')
+plt.plot(range(len(train_loss)), test_loss, c='orange', label='Val. Loss')
+plt.title('Train vs. Val. Loss', fontsize=16)
+plt.xlabel('Epoch', fontsize=16)
+plt.ylabel('Average Loss', fontsize=16)
+plt.ylim(0, max(test_loss) + .25)
+plt.legend()
+plt.savefig(model_save_folder+'train_val_loss', dpi=1200)
+
+plt.figure(figsize=(7,5), dpi=250)
+plt.plot(range(len(train_loss)), acc, c='orange', label='Acc.')
+plt.title('Accuracy', fontsize=16)
+plt.xlabel('Epoch', fontsize=16)
+plt.ylabel('Accuracy', fontsize=16)
+plt.ylim(0, max(acc) + .25)
+plt.savefig(model_save_folder+'test_acc', dpi=1200)
