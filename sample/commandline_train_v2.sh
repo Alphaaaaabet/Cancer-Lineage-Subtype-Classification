@@ -7,13 +7,13 @@ traindatafile=$inputdir"targets_train.txt"
 valdatafile=$inputdir"targets_test.txt"
 ontfile=$inputdir"drugcell_ont.txt"
 
-mutationfile_1=$inputdir"cell2mutation.txt"
-mutationfile_2=$inputdir"cell2mutation.txt"
+mutationfile_1=$inputdir"Vest_full_vector.txt"
+mutationfile_2=$inputdir"chasmplus_v2_vector.txt"
 drugfile=$inputdir"drug2fingerprint.txt"
 
 cudaid=0
 
-modeldir=Model_sample
+modeldir=2in_CV
 rm -rf $modeldir
 mkdir $modeldir #PW CHANGE commented out
 
