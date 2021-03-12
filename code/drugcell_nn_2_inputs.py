@@ -1,283 +1,314 @@
 import sys
 import os
-import numpy as np
 import torch
 import torch.utils.data as du
 from torch.autograd import Variable
 import torch.nn as nn
 import torch.nn.functional as F
-
+import util
+from util import *
+from drugcell_nn_2_inputs import *
 import argparse
+import numpy as np
 import time
 
-import networkx as nx
-import networkx.algorithms.components.connected as nxacc
-import networkx.algorithms.dag as nxadag
+
+# build mask: matrix (nrows = number of relevant gene set, ncols = number all genes)
+# elements of matrix are 1 if the corresponding gene is one of the relevant genes
+def create_term_mask(term_direct_gene_map, gene_dim):
+    term_mask_map = {}
+
+    for term, gene_set in term_direct_gene_map.items():
+
+        print("gene_dim type:", type(gene_dim))
+        print("gene_dim: ", gene_dim)
+
+        mask = torch.zeros(len(gene_set), gene_dim)
+
+        for i, gene_id in enumerate(gene_set):
+            mask[i, gene_id] = 1
+
+        mask_gpu = torch.autograd.Variable(mask.cuda(CUDA_ID))
+
+        term_mask_map[term] = mask_gpu
+
+    return term_mask_map
 
 
-class drugcell_nn(nn.Module):
-    ###TO DO: update train function to include extra arguments
-    ###
+# TODO: cell_features_1 and cell_features_2 are not used. Modity this function to use them.
+def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
+                nfeatures, gene_dim, model_save_folder, train_epochs,
+                batch_size, learning_rate, num_hiddens_genotype,
+                cell_features_1, cell_features_2, num_cancer_types):
+    epoch_start_time = time.time()
+    best_model = 0
 
-    # Need to add terms for number of features, each feature input
-    def __init__(self, term_size_map, term_direct_gene_map, dG, nfeatures,
-                 ngene, root, num_hiddens_feature, num_hiddens_genotype,
-                 num_cancer_types):
+    # dcell neural network
+    model = drugcell_nn(term_size_map, term_direct_gene_map, dG, nfeatures,
+                        gene_dim, root, num_hiddens_features,
+                        num_hiddens_genotype, num_cancer_types)
 
-        super(drugcell_nn, self).__init__()
+    train_feature, train_label, test_feature, test_label = train_data
 
-        self.root = root
-        self.num_hiddens_genotype = num_hiddens_genotype  # = 6
-        # self.num_hiddens_drug = num_hiddens_drug
-        self.num_hiddens_feature = num_hiddens_feature
+    train_label_gpu = torch.autograd.Variable(train_label.cuda(CUDA_ID))
+    test_label_gpu = torch.autograd.Variable(test_label.cuda(CUDA_ID))
 
-        # dictionary from terms to genes directly annotated with the term
-        self.term_direct_gene_map = term_direct_gene_map
+    model.cuda(CUDA_ID)
 
-        # calculate the number of values in a state (term): term_size_map is the number of all genes annotated with the term
-        self.cal_term_dim(term_size_map)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
+                                 betas=(0.9, 0.99), eps=1e-05)
+    #term_mask_map = create_term_mask(model.term_direct_gene_map, gene_dim)
 
-        # ngenes, gene_dim are the number of all genes
-        # nfeatures is the number of biological features connected to each gene
-        self.gene_dim = ngene
-        # self.drug_dim = ndrug
-        self.feat_dim = nfeatures
+    optimizer.zero_grad()
 
-        # add modules for neural networks to process genotype features
-        self.construct_direct_biofeature_layer()
-        self.contruct_direct_gene_layer()
-        self.construct_NN_graph(dG)
+    for name, param in model.named_parameters():
+        # Removed masking as no longer needed, keeping weight reduction
+        #term_name = name.split('_')[0]
 
-        # add modules for neural networks to process drugs	
-        # self.construct_NN_drug()
+        #if '_direct_gene_layer.weight' in name:
+        #    param.data = torch.mul(param.data, term_mask_map[term_name]) * 0.1
+        #else:
+        #    param.data = param.data * 0.1
+        param.data = param.data * 0.1
 
-        # add modules for final layer
-        final_input_size = num_hiddens_genotype
-        self.add_module('final_linear_layer',
-                        nn.Linear(final_input_size, num_cancer_types))
-        self.add_module('final_softmax_layer', nn.Softmax(num_cancer_types))
-
-    # calculate the number of values in a state (term)
-    # self.derm_dim_map = {GO_term: #_hidden_units}
-    # Only for GO terms connected to genes
-    # #_hidden_units is a hyperparam, default is set to 6
-    def cal_term_dim(self, term_size_map):
-
-        self.term_dim_map = {}
-
-        for term, term_size in term_size_map.items():
-            num_output = self.num_hiddens_genotype
-
-            # log the number of hidden variables per each term
-            num_output = int(num_output)
-            self.term_dim_map[term] = num_output
-
-
-    # TODO: Update dimensions to take feature inputs
-    # Build a layer for forwarding muations that are directly annotated with a gene
-    def construct_direct_biofeature_layer(self):
-        """ Iterate through term_direct_gene_map.items() to get gene indices
-            Add linear layer for each gene instance that takes in features
-        """
-
-        for term, gene_set in self.term_direct_gene_map.items():
-            if len(gene_set) == 0:
-                print(
-                    f'There are no directed asscoiated features for {term} {gene_set}')
-                sys.exit(1)
-
-            for gene in gene_set:
-                self.add_module(term + str(gene) + '_direct_feature_layer',
-                                nn.Linear(self.feat_dim,
-                                          self.num_hiddens_feature))
-                # produces array [1, n_hiddens] for each mutation/feature
-
-    # build a layer for forwarding gene that are directly annotated with the term
-    def contruct_direct_gene_layer(self):
-        """ 
-                    
-        """
-        for term, gene_set in self.term_direct_gene_map.items():
-            if len(gene_set) == 0:
-                print('There are no directed asscoiated genes for', term)
-                sys.exit(1)
-
-            for gene in gene_set:
-                # if there are some genes directly annotated with the term
-                # add a layer taking in all genes and forwarding out only those genes 		
-                self.add_module(term + str(gene) + '_direct_gene_layer',
-                                nn.Linear(self.num_hiddens_feature,
-                                          self.num_hiddens_genotype))
-                self.add_module(term + str(gene) + '_batchnorm_layer',
-                                nn.BatchNorm1d(self.num_hiddens_genotype))
-                self.add_module(term + str(gene) + '_aux_linear_layer1',
-                                nn.Linear(self.num_hiddens_genotype, 1))
-                self.add_module(term + str(gene) + '_aux_linear_layer2',
-                                nn.Linear(1, 1))
-
-    # start from bottom (leaves), and start building a neural network using the given ontology
-    # adding modules --- the modules are not connected yet
-    def construct_NN_graph(self, dG):
-
-        self.term_layer_list = []  # term_layer_list stores the built neural network
-        self.term_neighbor_map = {}
-
-        # term_neighbor_map records all children of each term	
-        # Root node is hierarchy parent
-        # dG.neighbors returns adjacent SUCCESSOR GO terms (not predecessor) for digraph
-        # gives you downstream terms of current GO term
-        for term in dG.nodes():
-            self.term_neighbor_map[term] = []
-            for child in dG.neighbors(term):
-                self.term_neighbor_map[term].append(child)
-
-        while True:
-            leaves = [n for n in dG.nodes() if dG.out_degree(n) == 0]
-            # leaves = [n for n,d in dG.out_degree().items() if d==0]
-            # leaves = [n for n,d in dG.out_degree() if d==0]
-
-            if len(leaves) == 0:
-                break
-
-            self.term_layer_list.append(leaves)
-
-            # leaves are only terms connected to genes
-            for term in leaves:
-
-                # input size will be #chilren + #genes directly annotated by the term
-                input_size = 0
-
-                for child in self.term_neighbor_map[term]:
-                    input_size += self.term_dim_map[child]
-
-                # Multiply number_genes * hidden_dim for total feature length 
-                if term in self.term_direct_gene_map:
-                    #print(len(self.term_direct_gene_map[term]))
-                    #print(self.num_hiddens_genotype)
-                    input_size += len(self.term_direct_gene_map[term]) * self.num_hiddens_genotype
-
-                # term_hidden is the number of the hidden variables in each state
-                term_hidden = self.term_dim_map[term]
-
-                self.add_module(term + '_linear_layer',
-                                nn.Linear(input_size, term_hidden))
-                self.add_module(term + '_batchnorm_layer',
-                                nn.BatchNorm1d(term_hidden))
-                self.add_module(term + '_aux_linear_layer1',
-                                nn.Linear(term_hidden, 1))
-                self.add_module(term + '_aux_linear_layer2', nn.Linear(1, 1))
-
-            # remove leaves, next layer down now has out_degree == 0
-            # iterator will repeat until rood node
-            # breaks loop when no nodes left
-            dG.remove_nodes_from(leaves)
-
-    # definition of forward function
-
-    def forward(self, x, y):
-        """ Need to: 
-                * add addn'l feature input
-                * forward gene features into feature map
-                * pass feature map activations to term+_direct_gene_layer
-                
-                x = input gene feature 1
-                y = input gene feature 2
-        """
-        # x = input features from util.build_input_vector()
-        # x = torch.Tensor.cuda() dims [batch_size, 5000], each row corresponds to a cell line
-
-        # gene_input = Tensor of gene mutations [batch_size, 3008] each row is cell line
-        # drug_input = Tensor of drug represen. [batch_size, 2000] each row is cell line
-
-        # define forward function for GENOTYPE dcell FEATURES-FEATURES-FEATURES-FEATURES-FEATURES-FEATURES-FEATURES-
-
-        # Nested dict to store{GO_term:{gene_ind: out_layer}, ...} 
-        # term_gene_feature_out_map['GO_term'][gene_ind] accesses the stored activation array
-        term_gene_feature_out_map = {}
-
-        for term, genes in self.term_direct_gene_map.items():
-            
-            term_gene_feature_out_map[term] = {}
-            
-            for gene in genes:            
-                gene_input_1 = x[:, gene]
-                gene_input_2 = y[:, gene]
+    train_loader = du.DataLoader(du.TensorDataset(train_feature, train_label),
+                                 batch_size=batch_size, shuffle=False)
+    test_loader = du.DataLoader(du.TensorDataset(test_feature, test_label),
+                                batch_size=batch_size, shuffle=False)
     
-                #print("gene_input_1:", gene_input_1.shape)
-                #print("gene_input_2:", gene_input_2.shape)
-                feat_input = torch.transpose(torch.stack([gene_input_1, gene_input_2]), 0, 1)
-                term_gene_feature_out_map[term][gene] = self._modules[term + str(gene) + '_direct_feature_layer'](feat_input)
-                  
-        # define forward function for GENOTYPE dcell GENE-GENE-GENE-GENE-GENE-GENE-GENE-GENE-GENE-GENE-GENE-GENE-GENE-
+    train_loss_list_for_graphing = []
+    test_loss_list_for_graphing = []
+    
+    train_acc_list_for_graphing = []
+    test_acc_list_for_graphing = []
+    
+    for epoch in range(train_epochs):
 
-        # Dict stores {GO_term: {gene_id: activation, ...}, ...} for each gene connected to GO_term
-        term_gene_out_map = {}
-        gene_aux_map = {}
+        # Train
+        model.train()
+        train_predict = torch.zeros(0, 0).type(torch.FloatTensor).cuda(CUDA_ID)
+        total_loss = 0
+        total_test_loss = 0
 
-        #       Mutation Input   x          Layer dims
-        # [batch_size, gene_dim] x [gene_dim, num_connected_genes] --> [batch_size, num_connected_genes]
-        # generates {GO_term: [linear output tensor]}
-        for term, gene_dict in term_gene_feature_out_map.items():
+        for i, (inputdata, labels) in enumerate(train_loader):
+
+            # Convert torch tensor to Variable
+            # features = [batch_size, 5000] feature tensor with cell/drug features
+            # Convert torch tensor to Variable
+            #print("features_1:", len(cell_features_1))
+            features_1 = build_input_vector(inputdata, cell_features_1)
+            #print("features_2:", len(cell_features_2))
+            features_2 = build_input_vector(inputdata, cell_features_2)
+            labels = torch.flatten(labels).type(torch.LongTensor)
             
-            term_gene_out_map[term] = {}
-            for gene, activation in gene_dict.items():
-               
-                gene_layer_output = self._modules[term + str(gene) + '_direct_gene_layer'](activation)
-                
-                tanh_out = torch.tanh(gene_layer_output)
-                
-                term_gene_out_map[term][gene] = self._modules[term + str(gene) + '_batchnorm_layer'](tanh_out)
-                
-                aux_layer1_out = torch.tanh(self._modules[term + str(gene) + '_aux_linear_layer1']
-                                            (term_gene_out_map[term][gene])) # May need indexer to access value
-                
-                gene_aux_map[term] = self._modules[term + str(gene) + '_aux_linear_layer2'](aux_layer1_out)
+            # cuda_features 
+            cuda_features_1 = torch.autograd.Variable(features_1.cuda(CUDA_ID))
+            cuda_features_2 = torch.autograd.Variable(features_2.cuda(CUDA_ID))
+            cuda_labels = torch.autograd.Variable(labels.cuda(CUDA_ID))
 
-        # define forward function for ONTOLOGY dcell ONTOLOGY-ONTOLOGY-ONTOLOGY-ONTOLOGY-ONTOLOGY-ONTOLOGY-ONTOLOGY-
+            # Forward + Backward + Optimize
+            optimizer.zero_grad()  # zero the gradient buffer
 
-        term_NN_out_map = {}
-        aux_out_map = {}
+            # Here term_NN_out_map is a dictionary
+            aux_out_map, term_NN_out_map = model(cuda_features_1, cuda_features_2)
 
-        for i, layer in enumerate(self.term_layer_list):
+            if train_predict.size()[0] == 0:
+                train_predict = term_NN_out_map['final'].data
+            else:
+                train_predict = torch.cat(
+                    [train_predict, term_NN_out_map['final'].data], dim=0)
 
-            for term in layer:
+            train_loss = 0
+            for name, output in term_NN_out_map.items():
+                #print("Output:", output.shape)
+                loss = nn.CrossEntropyLoss()
+                if name == 'final':
+                    train_loss += loss(output, cuda_labels)
+                #else:  # change 0.2 to smaller one for big terms
+                    #train_loss += 0.2 * loss(output, cuda_labels)
 
-                child_input_list = []
+            train_loss.backward()
 
-                # Appends any existing direct child outputs from previous forward pass
-                #print("Neighbors:", len(self.term_neighbor_map[term]))
-                for child in self.term_neighbor_map[term]:
-                    child_input_list.append(term_NN_out_map[child])
-                
-                # If GO_term has direct gene neigbors
-                # Iterate through {GO_term: {gene_id: activation, ...}, ...} to get GO_term, gene_id, activation
-                # append all gene activations for that GO_term
-                if term in self.term_direct_gene_map:   
-                    for gene, activation in term_gene_out_map[term].items():
-                    
-                        #print("Direct Genes:", len(term_gene_out_map[term]))
-                        child_input_list.append(term_gene_out_map[term][gene])
+            total_loss += train_loss / len(train_loader)
+    
+            acc = accuracy(output, cuda_labels)
+            
+            train_loss_list_for_graphing.append(train_loss)
+            train_acc_list_for_graphing.append(acc)
 
-                #print("child_input_list:", len(child_input_list))    
-                
-                # Add layer before this for gene term
-                child_input = torch.cat(child_input_list, dim=1)
+            '''
+            for name, param in model.named_parameters():
+                if '_direct_gene_layer.weight' not in name:
+                    continue
+                term_name = name.split('_')[0]
+                # print name, param.grad.data.size(), term_mask_map[term_name].size()
+                param.grad.data = torch.mul(param.grad.data,
+                                            term_mask_map[term_name])
+            '''
+            optimizer.step()
 
-                term_NN_out = self._modules[term + '_linear_layer'](child_input)
+        if epoch % 10 == 0:
+            torch.save(model,
+                       model_save_folder + '/model_' + str(epoch) + '.pt')
 
-                Tanh_out = torch.tanh(term_NN_out)
-                term_NN_out_map[term] = self._modules[term + '_batchnorm_layer'](Tanh_out)
-                
-                aux_layer1_out = torch.tanh(self._modules[term + '_aux_linear_layer1'](term_NN_out_map[term]))
-                aux_out_map[term] = self._modules[term + '_aux_linear_layer2'](aux_layer1_out)
+        # Test: random variables in training mode become static
+        model.eval()
 
-        # connect two neural networks at the top #################################################
-        final_input = term_NN_out_map[self.root]
+        test_predict = torch.zeros(0, 0).cuda(CUDA_ID)
 
-        out = self._modules['final_softmax_layer'](
-            self._modules['final_linear_layer'](final_input))
-        term_NN_out_map['final'] = out
+        for i, (inputdata, labels) in enumerate(test_loader):
+            # Convert torch tensor to Variable
+            features_1 = build_input_vector(inputdata, cell_features_1)
+            features_2 = build_input_vector(inputdata, cell_features_2)
+            labels = torch.flatten(labels).type(torch.LongTensor)
 
-        # aux_layer_out = torch.tanh(self._modules['final_aux_linear_layer'](out))
-        aux_out_map['final'] = out
+            # cuda_features 
+            cuda_features_1 = torch.autograd.Variable(features_1.cuda(CUDA_ID))
+            cuda_features_2 = torch.autograd.Variable(features_2.cuda(CUDA_ID))
+            cuda_labels = Variable(labels.cuda(CUDA_ID))
 
+            aux_out_map, term_NN_out_map = model(cuda_features_1, cuda_features_2)
+
+            if test_predict.size()[0] == 0:
+                test_predict = term_NN_out_map['final'].data
+            else:
+                test_predict = torch.cat(
+                    [test_predict, term_NN_out_map['final'].data], dim=0)
+
+            test_loss = 0
+            for name, output in term_NN_out_map.items():
+                loss = nn.CrossEntropyLoss()
+                if name == 'final':
+                    test_loss += loss(output, cuda_labels)
+                #else:  # change 0.2 to smaller one for big terms
+                    #test_loss += 0.2 * loss(output, cuda_labels)
+
+            total_test_loss += test_loss / len(test_loader)
+            
+            acc = accuracy(output, cuda_labels)
+            
+            test_loss_list_for_graphing.append(test_loss)
+            test_acc_list_for_graphing.append(acc)
+            
+        epoch_end_time = time.time()
+        print(
+            "epoch\t%d\tcuda_id\t%d\ttotal_loss\t%.6f\ttest_loss\t%.6f\telapsed_time\t%s" % (
+            epoch, CUDA_ID, total_loss, total_test_loss,
+            epoch_end_time - epoch_start_time))
+        epoch_start_time = epoch_end_time
+        
+        best_loss = 100
+        if best_loss > total_test_loss:
+            best_model_idx = epoch
+            best_model = model
+            best_loss = total_test_loss
+
+    torch.save(best_model, model_save_folder + '/model_final.pt')
+
+    print("Best performed model (epoch)\t%d" % best_model)
+    print(f'best model test accuracy: {test_acc_list_for_graphing[best_model_idx]}')
+
+    return train_loss_list_for_graphing, train_acc_list_for_graphing, test_loss_list_for_graphing, test_acc_list_for_graphing
+
+
+parser = argparse.ArgumentParser(description='Train dcell')
+parser.add_argument('-onto',
+                    help='Ontology file used to guide the neural network',
+                    type=str)
+parser.add_argument('-train', help='Training dataset', type=str)
+parser.add_argument('-test', help='Validation dataset', type=str)
+parser.add_argument('-epoch', help='Training epochs for training', type=int,
+                    default=300)
+parser.add_argument('-lr', help='Learning rate', type=float, default=0.001)
+parser.add_argument('-batchsize', help='Batchsize', type=int, default=5000)
+parser.add_argument('-modeldir', help='Folder for trained models', type=str,
+                    default='MODEL/')
+parser.add_argument('-cuda', help='Specify GPU', type=int, default=0)
+parser.add_argument('-gene2id', help='Gene to ID mapping file', type=str)
+parser.add_argument('-drug2id', help='Drug to ID mapping file', type=str)
+parser.add_argument('-cell2id', help='Cell to ID mapping file', type=str)
+
+parser.add_argument('-feature_hiddens',
+                    help='Mapping for the number of neurons in each term in genotype feature inputs',
+                    type=int, default=6)
+parser.add_argument('-genotype_hiddens',
+                    help='Mapping for the number of neurons in each term in genotype parts',
+                    type=int, default=6)
+parser.add_argument('-drug_hiddens',
+                    help='Mapping for the number of neurons in each layer',
+                    type=str, default='100,50,6')
+parser.add_argument('-final_hiddens',
+                    help='The number of neurons in the top layer', type=int,
+                    default=6)
+parser.add_argument('-num_cancer_types', help='The number of cancer types',
+                    type=int, default=92)
+
+parser.add_argument('-genotype_1', help='Mutation information for cell lines',
+                    type=str)
+parser.add_argument('-genotype_2', help='Mutation information for cell lines',
+                    type=str)
+parser.add_argument('-fingerprint',
+                    help='Morgan fingerprint representation for drugs',
+                    type=str)
+
+# call functions
+opt = parser.parse_args()
+torch.set_printoptions(precision=5)
+
+# load input data
+train_data, cell2id_mapping = prepare_train_data(opt.train, opt.test,
+                                                 opt.cell2id)
+gene2id_mapping = load_mapping(opt.gene2id)
+
+# load cell/drug features
+# cell features = [cell_line, gene] mutation array
+# drug features = [cell_line, drug] fingerprint array
+cell_features_1 = np.genfromtxt(opt.genotype_1, delimiter=',')
+cell_features_2 = np.genfromtxt(opt.genotype_2, delimiter=',')
+
+num_cells = len(cell2id_mapping)
+num_genes = len(gene2id_mapping)
+
+# load ontology
+dG, root, term_size_map, term_direct_gene_map = load_ontology(opt.onto,
+                                                              gene2id_mapping)
+
+# load the number of hiddens #######
+num_hiddens_genotype = opt.genotype_hiddens
+num_cancer_types = opt.num_cancer_types
+num_hiddens_final = opt.final_hiddens
+
+num_hiddens_features = opt.feature_hiddens
+#####################################
+
+CUDA_ID = opt.cuda
+
+# TODO: Check this. Not sure what should gene_dim be. Need to figure out the correct value.
+gene_dim = 6
+
+# TODO: Make sure the arguments are in correct order.
+train_loss, train_acc, test_loss, test_acc = train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
+                                                         2, num_genes, opt.modeldir, opt.epoch, opt.batchsize, opt.lr,
+                                                         num_hiddens_features, cell_features_1, cell_features_2,
+                                                         num_cancer_types)
+
+
+plt.figure(figsize=(7,5), dpi=250)
+plt.plot(range(len(train_loss)), train_loss, c='b', label='Train Loss')
+plt.plot(range(len(train_loss)), test_loss, c='orange', label='Val. Loss')
+plt.title('Train vs. Val. Loss', fontsize=16)
+plt.xlabel('Epoch', fontsize=16)
+plt.ylabel('Average Loss', fontsize=16)
+plt.ylim(0, max(val_loss) + .25)
+plt.legend()
+plt.savefig(model_save_folder+'train_val_loss', dpi=1200)
+
+plt.figure(figsize=(7,5), dpi=250)
+plt.plot(range(len(train_loss)), train_acc, c='b', label='Train Loss')
+plt.plot(range(len(train_loss)), test_acc, c='orange', label='Val. Loss')
+plt.title('Train vs. Val. Accuracy', fontsize=16)
+plt.xlabel('Epoch', fontsize=16)
+plt.ylabel('Accuracy', fontsize=16)
+plt.ylim(0, max(val_loss) + .25)
+plt.legend()
+plt.savefig(model_save_folder+'train_val_acc', dpi=1200)
