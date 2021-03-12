@@ -142,8 +142,8 @@ def prepare_train_data(train_file, test_file, cell2id_mapping_file):
 
 def build_input_vector(input_data, cell_features):
     
-    print("input_data:", input_data.size())
-    print("cell_features:", len(cell_features))
+    #print("input_data:", input_data.size())
+    #print("cell_features:", len(cell_features))
     genedim = len(cell_features[0])
     # drugdim = len(drug_features[0,:])
     feature = np.zeros((input_data.size()[0], genedim))
@@ -153,3 +153,11 @@ def build_input_vector(input_data, cell_features):
 
     feature = torch.from_numpy(feature).float()
     return feature
+
+def accuracy(output, label):
+    total = output.shape[0]
+    preds = torch.argmax(output, dim=1).T
+    
+    acc = torch.eq(preds, label).sum().item()/total
+    
+    return acc
