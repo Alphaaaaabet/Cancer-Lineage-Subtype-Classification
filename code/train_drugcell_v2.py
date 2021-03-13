@@ -12,6 +12,7 @@ import argparse
 import numpy as np
 import time
 import gc
+import matplotlib.pyplot as plt
 
 
 # build mask: matrix (nrows = number of relevant gene set, ncols = number all genes)
@@ -84,7 +85,7 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
     train_acc_list_for_graphing = []
     test_acc_list_for_graphing = []
     
-    for epoch in range(train_epochs):
+    for epoch in range(train_epochs): #train_epochs
 
         # Train
         model.train()
@@ -131,12 +132,16 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
 
             train_loss.backward()
 
-            total_loss += train_loss / len(train_loader)
+            total_loss += train_loss.item() / len(train_loader)
     
             acc = accuracy(output, cuda_labels)
             
-            train_loss_list_for_graphing.append(train_loss)
+            train_loss_list_for_graphing.append(train_loss.item())
             train_acc_list_for_graphing.append(acc)
+            
+            #print(f'\n\nloss.item() {train_loss.item()}')
+            #print(f'train_loss_list_for_graphing {train_loss_list_for_graphing}')
+            #print(f'train_loss_list_for_graphing {train_acc_list_for_graphing}\n\n')
             
 
 
@@ -196,11 +201,11 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
                 #else:  # change 0.2 to smaller one for big terms
                     #test_loss += 0.2 * loss(output, cuda_labels)
 
-            total_test_loss += test_loss / len(test_loader)
+            total_test_loss += test_loss.item() / len(test_loader)
             
             acc = accuracy(output, cuda_labels)
             
-            test_loss_list_for_graphing.append(test_loss)
+            test_loss_list_for_graphing.append(test_loss.item())
             test_acc_list_for_graphing.append(acc)
             
             #Memory cleanup
@@ -227,7 +232,7 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
 
     torch.save(best_model, model_save_folder + '/model_final.pt')
 
-    print("Best performed model (epoch)\t%d" % best_model)
+    print("Best performed model (epoch)\t%d" % best_model_idx)
     print(f'best model test accuracy: {test_acc_list_for_graphing[best_model_idx]}')
 
     return train_loss_list_for_graphing, train_acc_list_for_graphing, test_loss_list_for_graphing, test_acc_list_for_graphing
@@ -313,7 +318,7 @@ train_loss, train_acc, test_loss, test_acc = train_model(root, term_size_map, te
                                                          2, num_genes, opt.modeldir, opt.epoch, opt.batchsize, opt.lr,
                                                          num_hiddens_features, cell_features_1, cell_features_2,
                                                          num_cancer_types)
-
+#print(f'len(train_loss): {len(train_loss)}')
 
 plt.figure(figsize=(7,5), dpi=250)
 plt.plot(range(len(train_loss)), train_loss, c='b', label='Train Loss')
@@ -321,9 +326,9 @@ plt.plot(range(len(train_loss)), test_loss, c='orange', label='Val. Loss')
 plt.title('Train vs. Val. Loss', fontsize=16)
 plt.xlabel('Epoch', fontsize=16)
 plt.ylabel('Average Loss', fontsize=16)
-plt.ylim(0, max(val_loss) + .25)
+plt.ylim(0, max(train_loss) + .25)
 plt.legend()
-plt.savefig(model_save_folder+'train_val_loss', dpi=1200)
+plt.savefig(opt.modeldir+'_train_val_loss', dpi=1200)
 
 plt.figure(figsize=(7,5), dpi=250)
 plt.plot(range(len(train_loss)), train_acc, c='b', label='Train Loss')
@@ -331,6 +336,6 @@ plt.plot(range(len(train_loss)), test_acc, c='orange', label='Val. Loss')
 plt.title('Train vs. Val. Accuracy', fontsize=16)
 plt.xlabel('Epoch', fontsize=16)
 plt.ylabel('Accuracy', fontsize=16)
-plt.ylim(0, max(val_loss) + .25)
+plt.ylim(0, max(train_acc) + .05)
 plt.legend()
-plt.savefig(model_save_folder+'train_val_acc', dpi=1200)
+plt.savefig(opt.modeldir+'_train_val_acc', dpi=250)
