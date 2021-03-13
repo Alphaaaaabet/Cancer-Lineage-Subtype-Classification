@@ -19,4 +19,4 @@ mkdir $modeldir #PW CHANGE commented out
 
 #source activate pytorch3drugcell #PW CHANGE commented out
 
-python -u ../code/train_drugcell_v2.py -onto $ontfile -gene2id $gene2idfile -drug2id $drug2idfile -cell2id $cell2idfile -train $traindatafile -test $valdatafile -model $modeldir -cuda $cudaid -genotype_1 $mutationfile_1 -genotype_2 $mutationfile_2 -fingerprint $drugfile -feature_hiddens 6 -genotype_hiddens 6 -drug_hiddens '100,50,6' -final_hiddens 6 -epoch 1 -batchsize 5000 -num_cancer_types 92
+python -u ../code/train_drugcell_v2.py -onto $ontfile -gene2id $gene2idfile -drug2id $drug2idfile -cell2id $cell2idfile -train $traindatafile -test $valdatafile -model $modeldir -cuda $cudaid -genotype_1 $mutationfile_1 -genotype_2 $mutationfile_2 -fingerprint $drugfile -feature_hiddens 6 -genotype_hiddens 6 -drug_hiddens '100,50,6' -final_hiddens 6 -epoch 100 -batchsize 5000 -num_cancer_types 92
