@@ -85,6 +85,8 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
     train_acc_list_for_graphing = []
     test_acc_list_for_graphing = []
     
+    loss = nn.CrossEntropyLoss()
+    
     for epoch in range(train_epochs): #train_epochs
 
         # Train
@@ -124,7 +126,6 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
             train_loss = 0
             for name, output in term_NN_out_map.items():
                 #print("Output:", output.shape)
-                loss = nn.CrossEntropyLoss()
                 if name == 'final':
                     train_loss += loss(output, cuda_labels)
                 #else:  # change 0.2 to smaller one for big terms
@@ -195,7 +196,6 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
 
             test_loss = 0
             for name, output in term_NN_out_map.items():
-                loss = nn.CrossEntropyLoss()
                 if name == 'final':
                     test_loss += loss(output, cuda_labels)
                 #else:  # change 0.2 to smaller one for big terms
