@@ -4,6 +4,8 @@ import networkx as nx
 import networkx.algorithms.components.connected as nxacc
 import networkx.algorithms.dag as nxadag
 import numpy as np
+import torch.nn as nn
+import gc
 
 
 def pearson_corr(x, y):
@@ -91,7 +93,7 @@ def load_train_data(file_name, cell2id):
 
     with open(file_name, 'r') as fi:
         for line in fi:
-            tokens = line.strip().split('\t')
+            tokens = line.strip().split(',')
 
             feature.append(cell2id[tokens[0]])
             label.append([float(tokens[2])])
@@ -141,12 +143,77 @@ def prepare_train_data(train_file, test_file, cell2id_mapping_file):
 
 
 def build_input_vector(input_data, cell_features):
-    genedim = len(cell_features[0, :])
+    
+    #print("input_data:", input_data.size())
+    #print("cell_features:", len(cell_features))
+    genedim = len(cell_features[0])
     # drugdim = len(drug_features[0,:])
     feature = np.zeros((input_data.size()[0], genedim))
 
     for i in range(input_data.size()[0]):
-        feature[i] = cell_features[int(input_data[i, 0])]
+        feature[i] = cell_features[int(input_data[i])]
 
     feature = torch.from_numpy(feature).float()
     return feature
+
+def accuracy(output, label):
+    total = output.shape[0]
+    preds = torch.argmax(output, dim=1).T
+    
+    acc = torch.eq(preds, label).sum().item()/total
+    
+    return acc
+
+"""class DiceLoss(nn.Module):
+
+    def __init__(self, weight=None, size_average=True):
+        super(DiceLoss, self).__init__()
+
+    def forward(self, inputs, targets, eps=1e-6):
+
+        num_classes = inputs.shape[1]
+
+        true_1_hot = torch.eye(num_classes)[targets.squeeze(1)]
+        true_1_hot = true_1_hot.permute(0, 3, 1, 2).float()
+        probas = F.softmax(inputs, dim=1)
+        true_1_hot = true_1_hot.type(inputs.type())
+        dims = (0,) + tuple(range(2, targets.ndimension()))
+        intersection = torch.sum(probas * true_1_hot, dims)
+        cardinality = torch.sum(probas + true_1_hot, dims)
+        dice_loss = ((2. * intersection + eps) / (cardinality + eps)).mean()
+        
+        return (1 - dice_loss)"""
+
+def get_weights(train_labels, test_labels):
+    
+    print("train_lables.shape:", train_labels.shape)
+    print("test_lables.shape:", test_labels.shape)
+    
+    l1 = torch.flatten(train_labels).long()
+    l2 = torch.flatten(test_labels).long()
+    l = torch.cat([l1,l2])
+    total = l.shape[0]
+    
+    weights = torch.zeros(92)
+    
+    #Count occurrences of each label
+    for i in range(total):
+        weights[l[i]] += 1
+        
+    #Inverse frequency of each label
+    weights = torch.div(total, weights)
+    
+    #Square root
+    weights = torch.sqrt(weights)
+    
+    #Normalize
+    weights = torch.div(weights, torch.sum(weights).item())
+    
+    del l
+    gc.collect()
+    torch.cuda.empty_cache()
+    
+    print("Output:", weights.shape)
+    
+    return weights
+
