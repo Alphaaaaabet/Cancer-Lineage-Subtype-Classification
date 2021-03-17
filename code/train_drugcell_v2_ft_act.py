@@ -168,11 +168,11 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
             del cuda_labels
             gc.collect()
             torch.cuda.empty_cache()
-
+        '''
         if epoch % 10 == 0:
             torch.save(model,
                        model_save_folder + '/model_' + str(epoch) + '.pt')
-
+        '''
         # Test: random variables in training mode become static
         model.eval()
 
@@ -207,6 +207,8 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
             total_test_loss += test_loss.item() / len(test_loader)
             
             acc = accuracy(output, cuda_labels)
+            prec = precision(output, cuda_labels)
+            rec = recall(output, cuda_labels)
             
             test_loss_list_for_graphing.append(test_loss.item())
             test_acc_list_for_graphing.append(acc)
@@ -231,8 +233,12 @@ def train_model(root, term_size_map, term_direct_gene_map, dG, train_data,
             best_model_idx = epoch
             best_model = model
             best_loss = total_test_loss
+            best_prec = prec
+            best_rec = rec
 
-    torch.save(best_model, model_save_folder + '/model_final.pt')
+    #torch.save(best_model, model_save_folder + '/model_final.pt')
+    np.savetxt(model_save_folder + '/precision.txt', best_prec)
+    np.savetxt(model_save_folder + '/recal.txt', best_rec)
 
     print("Best performed model (epoch)\t%d" % best_model_idx)
     print(f'best model test accuracy: {test_acc_list_for_graphing[best_model_idx]}')

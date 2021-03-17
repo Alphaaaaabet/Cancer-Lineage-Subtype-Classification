@@ -164,6 +164,42 @@ def accuracy(output, label):
     
     return acc
 
+def precision(output, labels):
+    nums = torch.zeros(92)
+    denoms = torch.zeros(92)
+    preds = torch.argmax(output, dim=1).T
+    
+    for i in range(labels.shape[0]):
+        pred = preds[i]
+        label = labels[i]
+        denoms[pred] += 1
+        if pred == label:
+            nums[pred] += 1
+            
+    for j in range(92):
+        if denoms[j] == 0:
+            denoms[j] = 1
+            
+    return torch.div(nums, denoms)
+
+def recall(output, labels):
+    nums = torch.zeros(92)
+    denoms = torch.zeros(92)
+    preds = torch.argmax(output, dim=1).T
+    
+    for i in range(labels.shape[0]):
+        pred = preds[i]
+        label = labels[i]
+        denoms[label] += 1
+        if pred == label:
+            nums[pred] += 1
+            
+    for j in range(92):
+        if denoms[j] == 0:
+            denoms[j] = 1
+            
+    return torch.div(nums, denoms)
+
 """class DiceLoss(nn.Module):
 
     def __init__(self, weight=None, size_average=True):
@@ -216,4 +252,3 @@ def get_weights(train_labels, test_labels):
     print("Output:", weights.shape)
     
     return weights
-
